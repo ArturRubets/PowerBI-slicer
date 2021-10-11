@@ -4,33 +4,35 @@
             "displayName": "Category Data",
             "name": "category",
             "kind": "Grouping"
-        },
-        {
-            "displayName": "Measure Data",
-            "name": "measure",
-            "kind": "Measure"
         }
     ],
     "objects": {
-        "dataPoint": {
-            "displayName": "Data colors",
+        "title":{
+            "displayName": "Title",
             "properties": {
-                "defaultColor": {
-                    "displayName": "Default color",
-                    "type": {
-                        "fill": {
-                            "solid": {
-                                "color": true
-                            }
-                        }
-                    }
-                },
-                "showAllDataPoints": {
-                    "displayName": "Show all",
+                "hide": {
+                    "displayName": "Hide",
                     "type": {
                         "bool": true
                     }
                 },
+                "fontSizeTitle": {
+                    "displayName": "Font size title",
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "text": {
+                    "displayName": "Text",
+                    "type": {
+                        "text": true
+                    }
+                }
+            }
+        },
+        "general": {
+            "displayName": "General view",
+            "properties": {
                 "fill": {
                     "displayName": "Fill",
                     "type": {
@@ -39,12 +41,6 @@
                                 "color": true
                             }
                         }
-                    }
-                },
-                "fillRule": {
-                    "displayName": "Color saturation",
-                    "type": {
-                        "fill": {}
                     }
                 },
                  "fontSize": {
@@ -68,17 +64,17 @@
                     "dataReductionAlgorithm": {
                         "top": {}
                     }
-                },
-                "values": {
-                    "select": [
-                        {
-                            "bind": {
-                                "to": "measure"
-                            }
-                        }
-                    ]
                 }
-            }
+            },
+            "conditions": [
+                {
+                    "category": {
+                        "max": 1
+                    }
+                }
+            ]
         }
-    ]
+    ],
+    
+    "supportsMultiVisualSelection": true
 }
