@@ -7,8 +7,8 @@
         }
     ],
     "objects": {
-        "title":{
-            "displayName": "Title",
+        "topic":{
+            "displayName": "Topic",
             "properties": {
                 "hide": {
                     "displayName": "Hide",
@@ -16,8 +16,8 @@
                         "bool": true
                     }
                 },
-                "fontSizeTitle": {
-                    "displayName": "Font size title",
+                "fontSize": {
+                    "displayName": "Font size",
                     "type": {
                         "numeric": true
                     }
@@ -30,8 +30,8 @@
                 }
             }
         },
-        "general": {
-            "displayName": "General view",
+        "data": {
+            "displayName": "Data",
             "properties": {
                 "fill": {
                     "displayName": "Fill",
@@ -44,11 +44,9 @@
                     }
                 },
                  "fontSize": {
-                    "displayName": "Text Size",
+                    "displayName": "Font size",
                     "type": {
-                        "formatting": {
-                            "fontSize": true
-                        }
+                        "numeric": true
                     }
                 }
             }

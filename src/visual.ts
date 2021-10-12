@@ -1,5 +1,7 @@
 "use strict";
-
+import {
+    select as d3Select
+} from "d3-selection";
 import "core-js/stable";
 import "./../style/visual.less";
 import powerbi from "powerbi-visuals-api";
@@ -14,15 +16,19 @@ import PrimitiveValue = powerbi.PrimitiveValue;
 import { VisualSettings } from "./settings";
 import { dataViewObjects } from "powerbi-visuals-utils-dataviewutils";
 import IVisualHost = powerbi.extensibility.visual.IVisualHost;
+type Selection<T1, T2 = T1> = d3.Selection<any, T1, any, T2>;
+import * as d3 from "d3";
+import IVisualEventService = powerbi.extensibility.IVisualEventService;
+
 
 interface Settings {
-    general: {
+    data: {
         fill: string;
         fontSize: number;
     };
-    title: {
+    topic: {
         hide: boolean;
-        fontSizeTitle: number;
+        fontSize: number;
         text: string;
     }
 }
@@ -37,12 +43,12 @@ interface ViewModel {
 }
 
 let defaultSettings: Settings = {
-    general: {
+    data: {
         fill: '#4762D3',
         fontSize: 15
     },
-    title: {
-        fontSizeTitle: 15,
+    topic: {
+        fontSize: 15,
         hide: false,
         text: null
     }
@@ -73,15 +79,15 @@ function visualTransform(options: VisualUpdateOptions): ViewModel {
 
 
     let settings: Settings = {
-        general: {
-            fill: dataViewObjects.getFillColor(objects, { objectName: 'general', propertyName: 'fill' }, defaultSettings.general.fill),
-            fontSize: dataViewObjects.getValue(objects, { objectName: "general", propertyName: "fontSize",
-            }, defaultSettings.general.fontSize),
+        data: {
+            fill: dataViewObjects.getFillColor(objects, { objectName: 'data', propertyName: 'fill' }, defaultSettings.data.fill),
+            fontSize: dataViewObjects.getValue(objects, { objectName: "data", propertyName: "fontSize",
+            }, defaultSettings.data.fontSize),
         },
-        title:{
-            text: dataViewObjects.getValue(objects, { objectName: "general", propertyName: "text"}, categories.source.displayName),
-            fontSizeTitle: dataViewObjects.getValue(objects, { objectName: "general", propertyName: "fontSizeTitle"}, defaultSettings.title.fontSizeTitle),
-            hide: dataViewObjects.getValue(objects, { objectName: "general", propertyName: "hide"}, defaultSettings.title.hide),
+        topic:{
+            text: dataViewObjects.getValue(objects, { objectName: "topic", propertyName: "text"}, categories.source.displayName),
+            fontSize: dataViewObjects.getValue(objects, { objectName: "topic", propertyName: "fontSize"}, defaultSettings.topic.fontSize),
+            hide: dataViewObjects.getValue(objects, { objectName: "topic", propertyName: "hide"}, defaultSettings.topic.hide),
         }
     };
 
@@ -98,32 +104,17 @@ function visualTransform(options: VisualUpdateOptions): ViewModel {
 
 
 export class Visual implements IVisual {
-    private target: HTMLElement;
-    private updateCount: number;
-    private settings: Settings;
-    private textNode: Text;
-    
-    
+    private settings: Settings
+    private svg: Selection<any>;
+    private container: Selection<any>;
     private dataModel: Data;
     private host: IVisualHost;
 
     constructor(options: VisualConstructorOptions) {
         this.host = options.host;
-
-
-
-        console.log('Visual constructor', options);
-        this.target = options.element;
-        this.updateCount = 0;
-        if (document) {
-            const new_p: HTMLElement = document.createElement("p");
-            new_p.appendChild(document.createTextNode("Update count:"));
-            const new_em: HTMLElement = document.createElement("em");
-            this.textNode = document.createTextNode(this.updateCount.toString());
-            new_em.appendChild(this.textNode);
-            new_p.appendChild(new_em);
-            this.target.appendChild(new_p);
-        }
+        this.svg = d3Select(options.element)
+            .append('svg')
+        this.container = this.svg.append('g')
     }
 
     public update(options: VisualUpdateOptions) {
@@ -132,44 +123,48 @@ export class Visual implements IVisual {
         this.dataModel = viewModel.dataModel;
         console.log(viewModel);
         
-        
-        //this.settings = Visual.parseSettings(options && options.dataViews && options.dataViews[0]);
-        console.log('Visual update', options);
-        if (this.textNode) {
-            this.textNode.textContent = (this.updateCount++).toString();
-        }
+        let width = options.viewport.width;
+        let height = options.viewport.height;
+        this.svg.attr("width", width).attr("height", height);
 
-        const div: HTMLElement = document.createElement("div");
-        div.style.width = '20px';
-        div.style.height = '20px';
-        div.style.backgroundColor = '#CCC';
-        div.innerText = "DIV"
-        this.target.appendChild(div)
+        let margin = Math.min(width, height) * 0.1
+        this.container
+            .attr("transform", "translate(" + margin + "," +  margin + ")")
 
+        this.container
+            .append('ellipse')
+            .attr('cx', 100)
+            .attr('cy', 100)
+            .attr('rx', 200)
+            .attr('ry', 100)
 
     }
+
+
+
+
 
     public enumerateObjectInstances(options: EnumerateVisualObjectInstancesOptions): powerbi.VisualObjectInstanceEnumeration {
         let objectName = options.objectName;
         let objectEnumeration: VisualObjectInstance[] = [];
 
         if (!this.settings ||
-            !this.settings.general ||
-            !this.settings.title) {
+            !this.settings.data ||
+            !this.settings.topic) {
             return objectEnumeration;
         }
 
         switch (objectName) {
-            case 'title':
+            case 'topic':
                 objectEnumeration.push({
                     objectName: objectName,
                     properties: {
-                        hide: this.settings.title.hide,
-                        fontSizeTitle: this.settings.title.fontSizeTitle,
-                        text: this.settings.title.text
+                        hide: this.settings.topic.hide,
+                        fontSize: this.settings.topic.fontSize,
+                        text: this.settings.topic.text
                     },
                     validValues: {
-                        fontSizeTitle: {
+                        fontSize: {
                             numberRange: {
                                 min: 6,
                                 max: 40
@@ -179,17 +174,17 @@ export class Visual implements IVisual {
                     selector: null
                 });
                 break;
-            case 'general':
+            case 'data':
                 objectEnumeration.push({
                     objectName: objectName,
                     properties: {
-                        fill: this.settings.general.fill,
-                        fontSize: this.settings.general.fontSize,
+                        fill: this.settings.data.fill,
+                        fontSize: this.settings.data.fontSize,
                     },
                     validValues: {
-                        fontSizeValue: {
+                        fontSize: {
                             numberRange: {
-                                min: 0,
+                                min: 6,
                                 max: 40
                             }
                         }
