@@ -64,12 +64,23 @@ export class Visual implements IVisual {
     private text: Selection<any>;
     private dataModel: Data[];
     private host: IVisualHost;
-    private margin: number
+    private marginVertical: number
+    private marginHorizontal: number
     private widthRect: number
     private heightRect: number
     private width: number;
     private height: number;
-    private quantityElements: number = 1
+    private options: VisualUpdateOptions
+    private paddingArrow: number = 0.1
+    private activeData: Data
+    private shiftRight: boolean = false
+    private shiftLeft: boolean = false
+    private arrowLeft: Selection<any>
+    private arrowRight: Selection<any>
+    private rectForClickArrowLeft: Selection<any>
+    private rectForClickArrowRight: Selection<any>
+    private containerArrowLeft: Selection<any>
+    private containerArrowRight: Selection<any>
 
     constructor(options: VisualConstructorOptions) {
         this.host = options.host;
@@ -78,21 +89,89 @@ export class Visual implements IVisual {
         this.container = this.svg.append('g').attr('class', 'shadow')
         this.rect = this.container.append('rect')
         this.text = this.container.append('text')
+
+        this.containerArrowLeft = this.container.append('g')
+        this.containerArrowRight = this.container.append('g')
+
+        this.rectForClickArrowLeft = this.containerArrowLeft.append('rect')
+        this.rectForClickArrowRight = this.containerArrowRight.append('rect')
+
+        this.arrowLeft = this.containerArrowLeft.append('path')
+        this.arrowRight = this.containerArrowRight.append('path')
     }
 
     public update(options: VisualUpdateOptions) {
+        this.options = options
         let viewModel: ViewModel = visualTransform(options, this.host);
         this.settings = viewModel.settings;
         this.dataModel = viewModel.dataModel;
+        this.setActiveData(this.dataModel)
+
         this.width = options.viewport.width;
         this.height = options.viewport.height;
         this.svg.attr("width", this.width).attr("height", this.height);
+        this.marginVertical = Math.min(this.width, this.height) * 0.1
+        this.marginHorizontal = Math.min(this.width, this.height) * 0.4
+        const widthRect = this.widthRect = this.width - this.marginHorizontal * 2
+        this.heightRect = this.height - this.marginVertical * 2
 
-        this.margin = Math.min(this.width, this.height) * 0.1
-        this.widthRect = this.width - this.margin * 2
-        this.heightRect = this.height - this.margin * 2
-        this.container.attr("transform", "translate(" + this.margin + "," + this.margin + ")")
+        this.setShiftVisual()
 
+        this.drawButton()
+
+        const distanceUntilRect = this.marginHorizontal / 1.5
+        const marginUntilRect = distanceUntilRect * 0.4
+        const actualWidth = distanceUntilRect - marginUntilRect
+        const height = this.heightRect / 4
+        const settings = { distanceUntilRect, marginUntilRect, actualWidth, height, widthRect }
+        this.drawArrowLeft(settings)
+        this.drawArrowRight(settings)
+        this.clickArrowLeftEvent()
+        this.clickArrowRightEvent()
+
+        this.selectionManager
+            .select(this.dataModel[0].selectionId)
+            .then((ids: ISelectionId[]) => {
+                console.log((ids));
+
+            });
+    }
+
+    private clickArrowLeftEvent() {
+        this.rectForClickArrowLeft.on('click', d => {
+            if (this.host.hostCapabilities.allowInteractions) {
+                this.shiftLeft = true
+                this.update(this.options)
+            }
+        })
+    }
+
+    private clickArrowRightEvent() {
+        this.rectForClickArrowRight.on('click', d => {
+            if (this.host.hostCapabilities.allowInteractions) {
+                this.shiftRight = true
+                this.update(this.options)
+            }
+        })
+    }
+
+    private setActiveData(dataModel: Data[]) {
+        const index = dataModel.indexOf(this.activeData)
+        if (!this.shiftLeft && !this.shiftRight) {
+            this.activeData = dataModel[0]
+        } else if (this.shiftLeft) {
+            this.activeData = dataModel[Math.max(index - 1, 0)]
+        } else if (this.shiftRight) {
+            this.activeData = dataModel[Math.min(index + 1, dataModel.length - 1)]
+        }
+        this.shiftRight = this.shiftLeft = false
+    }
+
+    private setShiftVisual() {
+        this.container.attr("transform", "translate(" + this.marginHorizontal + "," + this.marginVertical + ")")
+    }
+
+    private drawButton() {
         this.rect
             .attr('x', 0)
             .attr('y', 0)
@@ -107,20 +186,62 @@ export class Visual implements IVisual {
             .style('font-size', Math.min(this.widthRect, this.heightRect) * 0.4)
             .attr('alignment-baseline', 'middle')
             .attr('text-anchor', 'middle')
-            .text(this.dataModel[0].data.toString())
-
-
-        this.selectionManager
-            .select(this.dataModel[0].selectionId)
-            .then((ids: ISelectionId[]) => {
-                console.log((ids));
-                
-            });
+            .text(this.activeData.data.toString())
     }
 
+    private drawArrowLeft({ actualWidth, height, distanceUntilRect }) {
+        const startX = -distanceUntilRect
+        const startY = this.heightRect / 2
+        
+        this.containerArrowLeft.attr('transform', `translate(${startX}, ${startY})`)
+        
+        this.arrowLeft
+            .attr('d', `
+                    M 0 0
+                    l ${actualWidth} ${height}
+                    M 0 0
+                    l ${actualWidth} ${-height}
+                `)
+            .style('stroke', '#000')
+            .style('stroke-width', .8)
+        
+        const nodeArrow = this.arrowLeft.node().getBBox()
 
+        //Прямоугольник отрисовуется по размерам стрелки для того чтобы проще было кликать на стрелку
+        this.rectForClickArrowLeft
+            .attr('x', 0)
+            .attr('y', -nodeArrow.height / 2)
+            .attr('width', nodeArrow.width)
+            .attr('height', nodeArrow.height)
+            .style('fill-opacity', 0)
+    }
 
+    private drawArrowRight({ distanceUntilRect, actualWidth, height, widthRect }) {
+        const startX = distanceUntilRect + widthRect
+        const startY = this.heightRect / 2
+        
+        this.containerArrowRight.attr('transform', `translate(${startX}, ${startY})`)
+        
+        this.arrowRight
+            .attr('d', `
+                M 0 0
+                l ${-actualWidth} ${height}
+                M 0 0
+                l ${-actualWidth} ${-height}
+            `)
+            .style('stroke', '#000')
+            .style('stroke-width', .8)
 
+        const nodeArrow = this.arrowRight.node().getBBox()
+
+        //Прямоугольник отрисовуется по размерам стрелки для того чтобы проще было кликать на стрелку
+        this.rectForClickArrowRight
+            .attr('x', -nodeArrow.width)
+            .attr('y', -nodeArrow.height / 2)
+            .attr('width', nodeArrow.width)
+            .attr('height', nodeArrow.height)
+            .style('fill-opacity', 0)
+    }
 
     public enumerateObjectInstances(options: EnumerateVisualObjectInstancesOptions): powerbi.VisualObjectInstanceEnumeration {
         let objectName = options.objectName;
@@ -214,7 +335,7 @@ function visualTransform(options: VisualUpdateOptions, host: IVisualHost): ViewM
 
     let data: Data[] = []
     categories.values.forEach((d, i) => data.push({
-        data: d, 
+        data: d,
         selectionId: host.createSelectionIdBuilder().withCategory(categories, i)
             .createSelectionId()
     }))
