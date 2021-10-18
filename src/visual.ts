@@ -37,6 +37,7 @@ interface ViewModel {
 }
 
 export class Visual implements IVisual {
+    private events: IVisualEventService;
     private selectionManager: ISelectionManager;
     private settings: Settings
     private svg: Selection<any>;
@@ -63,6 +64,7 @@ export class Visual implements IVisual {
     private containerArrowRight: Selection<any>
 
     constructor(options: VisualConstructorOptions) {
+        this.events = options.host.eventService;
         this.host = options.host;
         this.selectionManager = options.host.createSelectionManager()
         this.svg = d3Select(options.element).append('svg')
@@ -81,14 +83,12 @@ export class Visual implements IVisual {
     }
 
     public update(options: VisualUpdateOptions) {
+        this.events.renderingStarted(options);
         this.options = options
         let viewModel: ViewModel = visualTransform(options, this.host);
         this.settings = viewModel.settings;
         this.dataModel = viewModel.dataModel;
         this.setActiveData(this.dataModel)
-        console.log(this.activeData);
-        console.log('shiftLeft', this.shiftLeft);
-        console.log('shiftRight', this.shiftRight);
 
 
         this.width = options.viewport.width;
@@ -101,8 +101,9 @@ export class Visual implements IVisual {
 
         this.setShiftVisual()
 
-        this.drawButton()
 
+        this.drawButton()
+        this.drawText()
         const distanceUntilRect = this.marginHorizontal / 1.1
         const marginUntilRect = distanceUntilRect * 0.4
         const actualWidth = distanceUntilRect - marginUntilRect
@@ -124,6 +125,7 @@ export class Visual implements IVisual {
             if (this.host.hostCapabilities.allowInteractions) {
                 this.shiftLeft = true
                 this.update(this.options)
+                this.animateOpacity(this.rectForClickArrowLeft.node())
             }
         })
     }
@@ -133,6 +135,7 @@ export class Visual implements IVisual {
             if (this.host.hostCapabilities.allowInteractions) {
                 this.shiftRight = true
                 this.update(this.options)
+                this.animateOpacity(this.rectForClickArrowRight.node())
             }
         })
     }
@@ -184,19 +187,28 @@ export class Visual implements IVisual {
     }
 
     private drawButton() {
-        this.rect
-            .attr('x', 0)
-            .attr('y', 0)
-            .attr('width', this.widthRect)
-            .attr('height', this.heightRect)
-            .attr('rx', this.widthRect * 0.09)
-            .style('fill', '#fff')
+        if (this.widthRect / this.heightRect > 0.2) {
+            this.rect
+                .attr('x', 0)
+                .attr('y', 0)
+                .attr('width', this.widthRect)
+                .attr('height', this.heightRect)
+                .attr('rx', this.widthRect * 0.09)
+                .style('fill', '#fff')
+        } else {
+            this.rect
+                .attr('width', 0)
+                .attr('height', 0)
+        }
 
-        const fontSize =  this.settings.data.fontSize ? this.settings.data.fontSize: Math.min(this.widthRect, this.heightRect) * 0.4
+    }
+
+    private drawText() {
+        const fontSize = this.settings.data.fontSize ? this.settings.data.fontSize : Math.min(this.widthRect, this.heightRect) * 0.4
         this.text
             .attr('x', this.widthRect / 2)
             .attr('y', this.heightRect / 2)
-            .style('font-size',  fontSize)
+            .style('font-size', fontSize)
             .attr('alignment-baseline', 'middle')
             .attr('text-anchor', 'middle')
             .text(this.activeData.data.toString())
@@ -205,7 +217,7 @@ export class Visual implements IVisual {
     private drawArrowLeft({ actualWidth, height, distanceUntilRect }) {
         const startX = -distanceUntilRect
         const startY = this.heightRect / 2
-
+        const strokeWidth = actualWidth * 0.015
         this.containerArrowLeft.attr('transform', `translate(${startX}, ${startY})`)
 
         this.arrowLeft
@@ -216,7 +228,7 @@ export class Visual implements IVisual {
                     l ${actualWidth} ${-height}
                 `)
             .style('stroke', '#000')
-            .style('stroke-width', actualWidth * 0.015)
+            .style('stroke-width', strokeWidth)
 
         const nodeArrow = this.arrowLeft.node().getBBox()
 
@@ -232,7 +244,7 @@ export class Visual implements IVisual {
     private drawArrowRight({ distanceUntilRect, actualWidth, height, widthRect }) {
         const startX = distanceUntilRect + widthRect
         const startY = this.heightRect / 2
-
+        const strokeWidth = actualWidth * 0.015
         this.containerArrowRight.attr('transform', `translate(${startX}, ${startY})`)
 
         this.arrowRight
@@ -243,7 +255,8 @@ export class Visual implements IVisual {
                 l ${-actualWidth} ${-height}
             `)
             .style('stroke', '#000')
-            .style('stroke-width', actualWidth * 0.015)
+            .style('stroke-width', strokeWidth)
+
 
         const nodeArrow = this.arrowRight.node().getBBox()
 
@@ -254,6 +267,19 @@ export class Visual implements IVisual {
             .attr('width', nodeArrow.width)
             .attr('height', nodeArrow.height)
             .style('fill-opacity', 0)
+    }
+
+    private animateOpacity(node) {
+        d3.select(node)
+            .style('fill', 'black')
+            .style('fill-opacity', 0.4)
+            .transition()
+            .duration(1500)
+            .style('fill-opacity', 0)
+            .end()
+            .then(() => {
+                this.events.renderingFinished(this.options);
+            })
     }
 
     public enumerateObjectInstances(options: EnumerateVisualObjectInstancesOptions): powerbi.VisualObjectInstanceEnumeration {
@@ -304,7 +330,7 @@ function visualTransform(options: VisualUpdateOptions, host: IVisualHost): ViewM
 
     let settings: Settings = {
         data: {
-            fontSize: dataViewObjects.getValue(objects, {objectName: "data", propertyName: "fontSize"}, 
+            fontSize: dataViewObjects.getValue(objects, { objectName: "data", propertyName: "fontSize" },
                 defaultSettings.data.fontSize),
         },
     };
