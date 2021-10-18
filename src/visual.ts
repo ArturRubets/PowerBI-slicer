@@ -11,7 +11,7 @@ import VisualObjectInstance = powerbi.VisualObjectInstance;
 import DataView = powerbi.DataView;
 import VisualObjectInstanceEnumerationObject = powerbi.VisualObjectInstanceEnumerationObject;
 import PrimitiveValue = powerbi.PrimitiveValue;
-import { VisualSettings } from "./settings";
+import { Settings } from "./settings";
 import { dataViewObjects } from "powerbi-visuals-utils-dataviewutils";
 import IVisualHost = powerbi.extensibility.visual.IVisualHost;
 type Selection<T1, T2 = T1> = d3.Selection<any, T1, any, T2>;
@@ -20,16 +20,9 @@ import IVisualEventService = powerbi.extensibility.IVisualEventService;
 import ISelectionManager = powerbi.extensibility.ISelectionManager;
 import ISelectionId = powerbi.visuals.ISelectionId;
 
-
-interface Settings {
+const defaultSettings: Settings = {
     data: {
-        fill: string;
-        fontSize: number;
-    };
-    topic: {
-        hide: boolean;
-        fontSize: number;
-        text: string;
+        fontSize: null
     }
 }
 
@@ -42,18 +35,6 @@ interface ViewModel {
     dataModel: Data[];
     settings: Settings;
 }
-
-let defaultSettings: Settings = {
-    data: {
-        fill: '#4762D3',
-        fontSize: 15
-    },
-    topic: {
-        fontSize: 15,
-        hide: false,
-        text: null
-    }
-};
 
 export class Visual implements IVisual {
     private selectionManager: ISelectionManager;
@@ -71,7 +52,6 @@ export class Visual implements IVisual {
     private width: number;
     private height: number;
     private options: VisualUpdateOptions
-    private paddingArrow: number = 0.1
     private activeData: Data
     private shiftRight: boolean = false
     private shiftLeft: boolean = false
@@ -96,8 +76,8 @@ export class Visual implements IVisual {
         this.rectForClickArrowLeft = this.containerArrowLeft.append('rect')
         this.rectForClickArrowRight = this.containerArrowRight.append('rect')
 
-        this.arrowLeft = this.containerArrowLeft.append('path')
-        this.arrowRight = this.containerArrowRight.append('path')
+        this.arrowLeft = this.containerArrowLeft.append('path').attr('stroke-linecap', 'round')
+        this.arrowRight = this.containerArrowRight.append('path').attr('stroke-linecap', 'round')
     }
 
     public update(options: VisualUpdateOptions) {
@@ -106,6 +86,10 @@ export class Visual implements IVisual {
         this.settings = viewModel.settings;
         this.dataModel = viewModel.dataModel;
         this.setActiveData(this.dataModel)
+        console.log(this.activeData);
+        console.log('shiftLeft', this.shiftLeft);
+        console.log('shiftRight', this.shiftRight);
+
 
         this.width = options.viewport.width;
         this.height = options.viewport.height;
@@ -119,7 +103,7 @@ export class Visual implements IVisual {
 
         this.drawButton()
 
-        const distanceUntilRect = this.marginHorizontal / 1.5
+        const distanceUntilRect = this.marginHorizontal / 1.1
         const marginUntilRect = distanceUntilRect * 0.4
         const actualWidth = distanceUntilRect - marginUntilRect
         const height = this.heightRect / 4
@@ -128,13 +112,11 @@ export class Visual implements IVisual {
         this.drawArrowRight(settings)
         this.clickArrowLeftEvent()
         this.clickArrowRightEvent()
+        this.applyFilter()
+    }
 
-        this.selectionManager
-            .select(this.dataModel[0].selectionId)
-            .then((ids: ISelectionId[]) => {
-                console.log((ids));
-
-            });
+    private applyFilter() {
+        this.selectionManager.select(this.activeData.selectionId)
     }
 
     private clickArrowLeftEvent() {
@@ -147,7 +129,7 @@ export class Visual implements IVisual {
     }
 
     private clickArrowRightEvent() {
-        this.rectForClickArrowRight.on('click', d => {
+        this.containerArrowRight.on('click', d => {
             if (this.host.hostCapabilities.allowInteractions) {
                 this.shiftRight = true
                 this.update(this.options)
@@ -156,15 +138,45 @@ export class Visual implements IVisual {
     }
 
     private setActiveData(dataModel: Data[]) {
-        const index = dataModel.indexOf(this.activeData)
-        if (!this.shiftLeft && !this.shiftRight) {
+        if (!this.activeData) {
             this.activeData = dataModel[0]
-        } else if (this.shiftLeft) {
-            this.activeData = dataModel[Math.max(index - 1, 0)]
-        } else if (this.shiftRight) {
-            this.activeData = dataModel[Math.min(index + 1, dataModel.length - 1)]
         }
+        const currentDataIndex = this.findIndexData(this.activeData)
+
+        if (this.shiftLeft) {
+            this.activeData = dataModel[Math.max(currentDataIndex - 1, 0)]
+        } else if (this.shiftRight) {
+            this.activeData = dataModel[Math.min(currentDataIndex + 1, dataModel.length - 1)]
+        }
+
+        const nextDataIndex = this.findIndexData(this.activeData)
+
+        if (nextDataIndex === 0) {
+            this.disableArrow(this.containerArrowLeft)
+            this.ableArrow(this.containerArrowRight)
+        }
+        else if (nextDataIndex === dataModel.length - 1) {
+            this.disableArrow(this.containerArrowRight)
+            this.ableArrow(this.containerArrowLeft)
+        }
+        else {
+            this.ableArrow(this.containerArrowRight)
+            this.ableArrow(this.containerArrowLeft)
+        }
+
         this.shiftRight = this.shiftLeft = false
+    }
+
+    private findIndexData(data) {
+        return this.dataModel.findIndex(d => d.selectionId.equals(data.selectionId))
+    }
+
+    private disableArrow(arrowContainer) {
+        arrowContainer.style('display', 'none')
+    }
+
+    private ableArrow(arrowContainer) {
+        arrowContainer.style('display', 'inline')
     }
 
     private setShiftVisual() {
@@ -180,10 +192,11 @@ export class Visual implements IVisual {
             .attr('rx', this.widthRect * 0.09)
             .style('fill', '#fff')
 
+        const fontSize =  this.settings.data.fontSize ? this.settings.data.fontSize: Math.min(this.widthRect, this.heightRect) * 0.4
         this.text
             .attr('x', this.widthRect / 2)
             .attr('y', this.heightRect / 2)
-            .style('font-size', Math.min(this.widthRect, this.heightRect) * 0.4)
+            .style('font-size',  fontSize)
             .attr('alignment-baseline', 'middle')
             .attr('text-anchor', 'middle')
             .text(this.activeData.data.toString())
@@ -192,9 +205,9 @@ export class Visual implements IVisual {
     private drawArrowLeft({ actualWidth, height, distanceUntilRect }) {
         const startX = -distanceUntilRect
         const startY = this.heightRect / 2
-        
+
         this.containerArrowLeft.attr('transform', `translate(${startX}, ${startY})`)
-        
+
         this.arrowLeft
             .attr('d', `
                     M 0 0
@@ -203,8 +216,8 @@ export class Visual implements IVisual {
                     l ${actualWidth} ${-height}
                 `)
             .style('stroke', '#000')
-            .style('stroke-width', .8)
-        
+            .style('stroke-width', actualWidth * 0.015)
+
         const nodeArrow = this.arrowLeft.node().getBBox()
 
         //Прямоугольник отрисовуется по размерам стрелки для того чтобы проще было кликать на стрелку
@@ -219,9 +232,9 @@ export class Visual implements IVisual {
     private drawArrowRight({ distanceUntilRect, actualWidth, height, widthRect }) {
         const startX = distanceUntilRect + widthRect
         const startY = this.heightRect / 2
-        
+
         this.containerArrowRight.attr('transform', `translate(${startX}, ${startY})`)
-        
+
         this.arrowRight
             .attr('d', `
                 M 0 0
@@ -230,7 +243,7 @@ export class Visual implements IVisual {
                 l ${-actualWidth} ${-height}
             `)
             .style('stroke', '#000')
-            .style('stroke-width', .8)
+            .style('stroke-width', actualWidth * 0.015)
 
         const nodeArrow = this.arrowRight.node().getBBox()
 
@@ -248,45 +261,16 @@ export class Visual implements IVisual {
         let objectEnumeration: VisualObjectInstance[] = [];
 
         if (!this.settings ||
-            !this.settings.data ||
-            !this.settings.topic) {
+            !this.settings.data) {
             return objectEnumeration;
         }
 
         switch (objectName) {
-            case 'topic':
-                objectEnumeration.push({
-                    objectName: objectName,
-                    properties: {
-                        hide: this.settings.topic.hide,
-                        fontSize: this.settings.topic.fontSize,
-                        text: this.settings.topic.text
-                    },
-                    validValues: {
-                        fontSize: {
-                            numberRange: {
-                                min: 6,
-                                max: 40
-                            }
-                        }
-                    },
-                    selector: null
-                });
-                break;
             case 'data':
                 objectEnumeration.push({
                     objectName: objectName,
                     properties: {
-                        fill: this.settings.data.fill,
                         fontSize: this.settings.data.fontSize,
-                    },
-                    validValues: {
-                        fontSize: {
-                            numberRange: {
-                                min: 6,
-                                max: 40
-                            }
-                        }
                     },
                     selector: null
                 });
@@ -320,16 +304,9 @@ function visualTransform(options: VisualUpdateOptions, host: IVisualHost): ViewM
 
     let settings: Settings = {
         data: {
-            fill: dataViewObjects.getFillColor(objects, { objectName: 'data', propertyName: 'fill' }, defaultSettings.data.fill),
-            fontSize: dataViewObjects.getValue(objects, {
-                objectName: "data", propertyName: "fontSize",
-            }, defaultSettings.data.fontSize),
+            fontSize: dataViewObjects.getValue(objects, {objectName: "data", propertyName: "fontSize"}, 
+                defaultSettings.data.fontSize),
         },
-        topic: {
-            text: dataViewObjects.getValue(objects, { objectName: "topic", propertyName: "text" }, categories.source.displayName),
-            fontSize: dataViewObjects.getValue(objects, { objectName: "topic", propertyName: "fontSize" }, defaultSettings.topic.fontSize),
-            hide: dataViewObjects.getValue(objects, { objectName: "topic", propertyName: "hide" }, defaultSettings.topic.hide),
-        }
     };
 
 
