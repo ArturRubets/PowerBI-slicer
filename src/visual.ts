@@ -65,6 +65,8 @@ export class Visual implements IVisual {
     private containerArrowLeft: Selection<any>
     private containerArrowRight: Selection<any>
     private duration: number = 400
+    private callApplyFilterOnStart: boolean = true
+    private defaultValue: string = '(Empty)'
 
     constructor(options: VisualConstructorOptions) {
         this.events = options.host.eventService;
@@ -89,11 +91,11 @@ export class Visual implements IVisual {
         this.events.renderingStarted(options);
         this.options = options
         let viewModel: ViewModel = visualTransform(options, this.host);
-
+        
         this.settings = viewModel.settings;
         this.dataModel = viewModel.dataModel;
         this.setActiveData(this.dataModel)
-
+        
 
         this.width = options.viewport.width;
         this.height = options.viewport.height;
@@ -106,8 +108,8 @@ export class Visual implements IVisual {
         this.setShiftVisual()
         const black = '#333', white = '#fff'
         const fillText = this.settings.appearance.blackMode ? white : black
-        const fillButton = this.settings.appearance.blackMode ? black: white
-        
+        const fillButton = this.settings.appearance.blackMode ? black : white
+
         this.drawButton(fillButton)
         this.drawText(fillText)
         const distanceUntilRect = this.marginHorizontal / 1.1
@@ -120,7 +122,14 @@ export class Visual implements IVisual {
         this.drawArrowRight(settings)
         this.clickArrowLeftEvent()
         this.clickArrowRightEvent()
-        this.applyFilter()
+        if (this.callApplyFilterOnStart) {
+            this.applyFilter()
+            this.callApplyFilterOnStart = false
+        }    
+        console.log(viewModel);
+
+        console.log(this.activeData);
+        
     }
 
     private applyFilter() {
@@ -138,7 +147,6 @@ export class Visual implements IVisual {
     }
 
     private clickArrowRightEvent() {
-
         this.containerArrowRight.on('click', d => {
             if (this.host.hostCapabilities.allowInteractions) {
                 this.shiftRight = true
@@ -148,25 +156,52 @@ export class Visual implements IVisual {
         })
     }
 
+    private checkOneObjectInDataModel(dataModel: Data[]){
+        return dataModel.length === 1
+    }
+
+    private checkEmptyDataModel(dataModel: Data[]){
+        return dataModel.length === 0
+    }
+
+    private existActiveData(){
+        return this.activeData && this.activeData.data != this.defaultValue
+    }
+
     private setActiveData(dataModel: Data[]) {
-        if (!this.activeData) {
+        debugger
+        if(this.checkEmptyDataModel(dataModel)){
+            this.activeData = {data: this.defaultValue, selectionId: null}
+            this.disableArrow(this.containerArrowLeft)
+            this.disableArrow(this.containerArrowRight)
+            return
+        }
+
+        if(this.checkOneObjectInDataModel(dataModel)){
+            this.activeData = dataModel[0]
+            this.disableArrow(this.containerArrowLeft)
+            this.disableArrow(this.containerArrowRight)
+            return
+        }
+
+        if (!this.existActiveData()) {
             this.activeData = dataModel[0]
         }
-        const currentDataIndex = this.findIndexData(this.activeData)
+        const dataIndex = this.findIndexData(this.activeData)
 
         if (this.shiftLeft) {
-            this.activeData = dataModel[Math.max(currentDataIndex - 1, 0)]
+            this.activeData = dataModel[Math.max(dataIndex - 1, 0)]
         } else if (this.shiftRight) {
-            this.activeData = dataModel[Math.min(currentDataIndex + 1, dataModel.length - 1)]
+            this.activeData = dataModel[Math.min(dataIndex + 1, dataModel.length - 1)]
         }
 
-        const nextDataIndex = this.findIndexData(this.activeData)
+        const dataIndexAfterChange = this.findIndexData(this.activeData)
 
-        if (nextDataIndex === 0) {
+        if (dataIndexAfterChange === 0) {
             this.disableArrow(this.containerArrowLeft)
             this.ableArrow(this.containerArrowRight)
         }
-        else if (nextDataIndex === dataModel.length - 1) {
+        else if (dataIndexAfterChange === dataModel.length - 1) {
             this.disableArrow(this.containerArrowRight)
             this.ableArrow(this.containerArrowLeft)
         }
@@ -278,6 +313,12 @@ export class Visual implements IVisual {
             .style('fill-opacity', 0)
     }
 
+    private executeAfterAnimate(){
+        this.update(this.options)
+        this.applyFilter()
+        this.events.renderingFinished(this.options);
+    }
+
     private animateOpacity(node) {
         d3.select(node)
             .style('fill', 'black')
@@ -287,8 +328,7 @@ export class Visual implements IVisual {
             .style('fill-opacity', 0)
             .end()
             .then(() => {
-                this.update(this.options)
-                this.events.renderingFinished(this.options);
+                this.executeAfterAnimate()
             })
     }
 
@@ -362,8 +402,9 @@ function visualTransform(options: VisualUpdateOptions, host: IVisualHost): ViewM
     let data: Data[] = []
     categories.values.forEach((d, i) => data.push({
         data: d,
-        selectionId: host.createSelectionIdBuilder().withCategory(categories, i)
-            .createSelectionId()
+        selectionId: host.createSelectionIdBuilder()
+                        .withCategory(categories, i)
+                        .createSelectionId()
     }))
 
     return {
