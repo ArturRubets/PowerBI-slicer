@@ -8,8 +8,6 @@ import VisualUpdateOptions = powerbi.extensibility.visual.VisualUpdateOptions;
 import IVisual = powerbi.extensibility.visual.IVisual;
 import EnumerateVisualObjectInstancesOptions = powerbi.EnumerateVisualObjectInstancesOptions;
 import VisualObjectInstance = powerbi.VisualObjectInstance;
-import DataView = powerbi.DataView;
-import VisualObjectInstanceEnumerationObject = powerbi.VisualObjectInstanceEnumerationObject;
 import PrimitiveValue = powerbi.PrimitiveValue;
 import { Settings } from "./settings";
 import { dataViewObjects } from "powerbi-visuals-utils-dataviewutils";
@@ -20,9 +18,13 @@ import IVisualEventService = powerbi.extensibility.IVisualEventService;
 import ISelectionManager = powerbi.extensibility.ISelectionManager;
 import ISelectionId = powerbi.visuals.ISelectionId;
 
+
 const defaultSettings: Settings = {
     data: {
         fontSize: null
+    },
+    appearance: {
+        blackMode: false
     }
 }
 
@@ -62,6 +64,7 @@ export class Visual implements IVisual {
     private rectForClickArrowRight: Selection<any>
     private containerArrowLeft: Selection<any>
     private containerArrowRight: Selection<any>
+    private duration: number = 400
 
     constructor(options: VisualConstructorOptions) {
         this.events = options.host.eventService;
@@ -86,6 +89,7 @@ export class Visual implements IVisual {
         this.events.renderingStarted(options);
         this.options = options
         let viewModel: ViewModel = visualTransform(options, this.host);
+
         this.settings = viewModel.settings;
         this.dataModel = viewModel.dataModel;
         this.setActiveData(this.dataModel)
@@ -95,20 +99,23 @@ export class Visual implements IVisual {
         this.height = options.viewport.height;
         this.svg.attr("width", this.width).attr("height", this.height);
         this.marginVertical = Math.min(this.width, this.height) * 0.1
-        this.marginHorizontal = Math.min(this.width, this.height) * 0.4
+        this.marginHorizontal = Math.min(this.width, this.height) * 0.5
         const widthRect = this.widthRect = this.width - this.marginHorizontal * 2
         this.heightRect = this.height - this.marginVertical * 2
 
         this.setShiftVisual()
-
-
-        this.drawButton()
-        this.drawText()
+        const black = '#333', white = '#fff'
+        const fillText = this.settings.appearance.blackMode ? white : black
+        const fillButton = this.settings.appearance.blackMode ? black: white
+        
+        this.drawButton(fillButton)
+        this.drawText(fillText)
         const distanceUntilRect = this.marginHorizontal / 1.1
-        const marginUntilRect = distanceUntilRect * 0.4
+        const marginUntilRect = distanceUntilRect * 0.2
         const actualWidth = distanceUntilRect - marginUntilRect
-        const height = this.heightRect / 4
-        const settings = { distanceUntilRect, marginUntilRect, actualWidth, height, widthRect }
+        const height = this.heightRect / 3
+        const strokeWidth = 0.6//actualWidth * 0.03
+        const settings = { distanceUntilRect, marginUntilRect, actualWidth, height, widthRect, strokeWidth }
         this.drawArrowLeft(settings)
         this.drawArrowRight(settings)
         this.clickArrowLeftEvent()
@@ -124,17 +131,18 @@ export class Visual implements IVisual {
         this.rectForClickArrowLeft.on('click', d => {
             if (this.host.hostCapabilities.allowInteractions) {
                 this.shiftLeft = true
-                this.update(this.options)
+                this.rectForClickArrowLeft.on('click', null)
                 this.animateOpacity(this.rectForClickArrowLeft.node())
             }
         })
     }
 
     private clickArrowRightEvent() {
+
         this.containerArrowRight.on('click', d => {
             if (this.host.hostCapabilities.allowInteractions) {
                 this.shiftRight = true
-                this.update(this.options)
+                this.containerArrowRight.on('click', null)
                 this.animateOpacity(this.rectForClickArrowRight.node())
             }
         })
@@ -186,7 +194,7 @@ export class Visual implements IVisual {
         this.container.attr("transform", "translate(" + this.marginHorizontal + "," + this.marginVertical + ")")
     }
 
-    private drawButton() {
+    private drawButton(fill) {
         if (this.widthRect / this.heightRect > 0.2) {
             this.rect
                 .attr('x', 0)
@@ -194,7 +202,7 @@ export class Visual implements IVisual {
                 .attr('width', this.widthRect)
                 .attr('height', this.heightRect)
                 .attr('rx', this.widthRect * 0.09)
-                .style('fill', '#fff')
+                .style('fill', fill)
         } else {
             this.rect
                 .attr('width', 0)
@@ -203,7 +211,7 @@ export class Visual implements IVisual {
 
     }
 
-    private drawText() {
+    private drawText(fill) {
         const fontSize = this.settings.data.fontSize ? this.settings.data.fontSize : Math.min(this.widthRect, this.heightRect) * 0.4
         this.text
             .attr('x', this.widthRect / 2)
@@ -211,13 +219,14 @@ export class Visual implements IVisual {
             .style('font-size', fontSize)
             .attr('alignment-baseline', 'middle')
             .attr('text-anchor', 'middle')
+            .style('fill', fill)
             .text(this.activeData.data.toString())
     }
 
-    private drawArrowLeft({ actualWidth, height, distanceUntilRect }) {
+    private drawArrowLeft({ actualWidth, height, distanceUntilRect, strokeWidth }) {
         const startX = -distanceUntilRect
         const startY = this.heightRect / 2
-        const strokeWidth = actualWidth * 0.015
+
         this.containerArrowLeft.attr('transform', `translate(${startX}, ${startY})`)
 
         this.arrowLeft
@@ -241,10 +250,10 @@ export class Visual implements IVisual {
             .style('fill-opacity', 0)
     }
 
-    private drawArrowRight({ distanceUntilRect, actualWidth, height, widthRect }) {
+    private drawArrowRight({ distanceUntilRect, actualWidth, height, widthRect, strokeWidth }) {
         const startX = distanceUntilRect + widthRect
         const startY = this.heightRect / 2
-        const strokeWidth = actualWidth * 0.015
+
         this.containerArrowRight.attr('transform', `translate(${startX}, ${startY})`)
 
         this.arrowRight
@@ -274,10 +283,11 @@ export class Visual implements IVisual {
             .style('fill', 'black')
             .style('fill-opacity', 0.4)
             .transition()
-            .duration(1500)
+            .duration(this.duration)
             .style('fill-opacity', 0)
             .end()
             .then(() => {
+                this.update(this.options)
                 this.events.renderingFinished(this.options);
             })
     }
@@ -297,6 +307,15 @@ export class Visual implements IVisual {
                     objectName: objectName,
                     properties: {
                         fontSize: this.settings.data.fontSize,
+                    },
+                    selector: null
+                });
+                break;
+            case 'appearance':
+                objectEnumeration.push({
+                    objectName: objectName,
+                    properties: {
+                        blackMode: this.settings.appearance.blackMode,
                     },
                     selector: null
                 });
@@ -333,6 +352,10 @@ function visualTransform(options: VisualUpdateOptions, host: IVisualHost): ViewM
             fontSize: dataViewObjects.getValue(objects, { objectName: "data", propertyName: "fontSize" },
                 defaultSettings.data.fontSize),
         },
+        appearance: {
+            blackMode: dataViewObjects.getValue(objects, { objectName: "appearance", propertyName: "blackMode" },
+                defaultSettings.appearance.blackMode),
+        }
     };
 
 

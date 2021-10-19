@@ -12,5 +12,9 @@ export class Settings {
   public data: {
     fontSize: number
   }
+
+  public appearance:{
+    blackMode: boolean
+  }
 }
 

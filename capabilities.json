@@ -17,6 +17,17 @@
                     }
                 }
             }
+        },
+        "appearance":{
+            "displayName": "Appearance",
+            "properties": {
+                "blackMode":{
+                    "displayName": "Black mode",
+                    "type": {
+                        "bool": true
+                    }
+                }
+            }
         }
     },
     "dataViewMappings": [
