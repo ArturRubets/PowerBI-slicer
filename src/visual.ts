@@ -91,11 +91,11 @@ export class Visual implements IVisual {
         this.events.renderingStarted(options);
         this.options = options
         let viewModel: ViewModel = visualTransform(options, this.host);
-        
+
         this.settings = viewModel.settings;
         this.dataModel = viewModel.dataModel;
         this.setActiveData(this.dataModel)
-        
+
 
         this.width = options.viewport.width;
         this.height = options.viewport.height;
@@ -125,11 +125,11 @@ export class Visual implements IVisual {
         if (this.callApplyFilterOnStart) {
             this.applyFilter()
             this.callApplyFilterOnStart = false
-        }    
+        }
         console.log(viewModel);
 
         console.log(this.activeData);
-        
+
     }
 
     private applyFilter() {
@@ -156,28 +156,36 @@ export class Visual implements IVisual {
         })
     }
 
-    private checkOneObjectInDataModel(dataModel: Data[]){
+    private checkOneObjectInDataModel(dataModel: Data[]) {
         return dataModel.length === 1
     }
 
-    private checkEmptyDataModel(dataModel: Data[]){
+    private checkEmptyDataModel(dataModel: Data[]) {
         return dataModel.length === 0
     }
 
-    private existActiveData(){
+    private existActiveData() {
         return this.activeData && this.activeData.data != this.defaultValue
     }
 
-    private setActiveData(dataModel: Data[]) {
+    private existActiveDataInDataModel() {
+        //проверка нужна для того чтобы сразу переключить активный элемент при смене набора данных. Например при смене года на месяц
         debugger
-        if(this.checkEmptyDataModel(dataModel)){
-            this.activeData = {data: this.defaultValue, selectionId: null}
+        const index = this.findIndexData(this.activeData)
+        
+        return index != -1
+    }
+
+    private setActiveData(dataModel: Data[]) {
+
+        if (this.checkEmptyDataModel(dataModel)) {
+            this.activeData = { data: this.defaultValue, selectionId: null }
             this.disableArrow(this.containerArrowLeft)
             this.disableArrow(this.containerArrowRight)
             return
         }
 
-        if(this.checkOneObjectInDataModel(dataModel)){
+        if (this.checkOneObjectInDataModel(dataModel)) {
             this.activeData = dataModel[0]
             this.disableArrow(this.containerArrowLeft)
             this.disableArrow(this.containerArrowRight)
@@ -186,14 +194,18 @@ export class Visual implements IVisual {
 
         if (!this.existActiveData()) {
             this.activeData = dataModel[0]
+        } else if (!this.existActiveDataInDataModel()) {            
+            this.activeData = dataModel[0]
         }
-        const dataIndex = this.findIndexData(this.activeData)
+        else {
+            const dataIndex = this.findIndexData(this.activeData)
+            if (this.shiftLeft) {
+                this.activeData = dataModel[Math.max(dataIndex - 1, 0)]
+            } else if (this.shiftRight) {
+                this.activeData = dataModel[Math.min(dataIndex + 1, dataModel.length - 1)]
+            }
+        }
 
-        if (this.shiftLeft) {
-            this.activeData = dataModel[Math.max(dataIndex - 1, 0)]
-        } else if (this.shiftRight) {
-            this.activeData = dataModel[Math.min(dataIndex + 1, dataModel.length - 1)]
-        }
 
         const dataIndexAfterChange = this.findIndexData(this.activeData)
 
@@ -214,7 +226,7 @@ export class Visual implements IVisual {
     }
 
     private findIndexData(data) {
-        return this.dataModel.findIndex(d => d.selectionId.equals(data.selectionId))
+        return this.dataModel.findIndex(d => d.selectionId.equals(data.selectionId) && d.data === data.data)
     }
 
     private disableArrow(arrowContainer) {
@@ -313,7 +325,7 @@ export class Visual implements IVisual {
             .style('fill-opacity', 0)
     }
 
-    private executeAfterAnimate(){
+    private executeAfterAnimate() {
         this.update(this.options)
         this.applyFilter()
         this.events.renderingFinished(this.options);
@@ -403,8 +415,8 @@ function visualTransform(options: VisualUpdateOptions, host: IVisualHost): ViewM
     categories.values.forEach((d, i) => data.push({
         data: d,
         selectionId: host.createSelectionIdBuilder()
-                        .withCategory(categories, i)
-                        .createSelectionId()
+            .withCategory(categories, i)
+            .createSelectionId()
     }))
 
     return {
