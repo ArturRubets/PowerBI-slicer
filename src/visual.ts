@@ -17,7 +17,7 @@ import * as d3 from "d3";
 import IVisualEventService = powerbi.extensibility.IVisualEventService;
 import ISelectionManager = powerbi.extensibility.ISelectionManager;
 import ISelectionId = powerbi.visuals.ISelectionId;
-const getEvent = () => require("d3-selection").event;
+import {BasicFilter, IFilterColumnTarget} from 'powerbi-models'
 
 const defaultSettings: Settings = {
     data: {
@@ -55,7 +55,7 @@ export class Visual implements IVisual {
     private width: number;
     private height: number;
     private options: VisualUpdateOptions
-    private activeData: Data
+
     private shiftRight: boolean = false
     private shiftLeft: boolean = false
     private arrowLeft: Selection<any>
@@ -65,13 +65,22 @@ export class Visual implements IVisual {
     private containerArrowLeft: Selection<any>
     private containerArrowRight: Selection<any>
     private duration: number = 400
-    private callFilterDataBeforeArrowClick: boolean = true
+    private isEventUpdate: boolean = false
     private defaultValue: string = '(Empty)'
+
+    private selectionIds: ISelectionId[] = [];
+    private activeData: Data
 
     constructor(options: VisualConstructorOptions) {
         this.events = options.host.eventService;
         this.host = options.host;
         this.selectionManager = options.host.createSelectionManager()
+        this.selectionManager.registerOnSelectCallback((ids: ISelectionId[]) => {
+            // console.log(ids);
+            // this.options.jsonFilters
+            // this.applyFilter()
+
+        });
         this.svg = d3Select(options.element).append('svg')
         this.container = this.svg.append('g').attr('class', 'shadow')
         this.rect = this.container.append('rect')
@@ -90,13 +99,13 @@ export class Visual implements IVisual {
     public update(options: VisualUpdateOptions) {
         this.events.renderingStarted(options);
         this.options = options
+        
         let viewModel: ViewModel = visualTransform(options, this.host);
 
         this.settings = viewModel.settings;
         this.dataModel = viewModel.dataModel;
         this.setActiveData(this.dataModel)
-        console.log('update');
-        
+
 
         this.width = options.viewport.width;
         this.height = options.viewport.height;
@@ -123,33 +132,38 @@ export class Visual implements IVisual {
         this.drawArrowRight(settings)
         this.clickArrowLeftEvent()
         this.clickArrowRightEvent()
-debugger
-        this.applyFilter()
-        this.applyFilter()
-        this.applyFilter()
-        this.applyFilter()
-        // console.log( this.callFilterDataBeforeArrowClick);
-        
-        // if (this.callFilterDataBeforeArrowClick) {
+
+        // if (!this.isEventUpdate) {
         //     this.applyFilter()
         // }
+        debugger
+
+        let target: IFilterColumnTarget = {
+            table: "Analyze ( Chart1)",
+            column: "Qty"
+        };
+        let values = [1, 2, 3, 23, 24];
+        let filter: BasicFilter = new BasicFilter(target, "In", values)
+        
+       this.host.applyJsonFilter(filter, "general", "filter", powerbi.FilterAction.merge);
+ 
+
     }
 
     private applyFilter() {
-        if (this.host.hostCapabilities.allowInteractions) {            
-            this.selectionManager.select(this.activeData.selectionId);
-            console.log((<Event>getEvent()));
-            
-            // (<Event>getEvent()).stopPropagation();
+        if (this.host.hostCapabilities.allowInteractions) {
+            this.isEventUpdate = true; // This is checked in the update method. If true it won't re-render, this prevents and infinite loop
+            this.selectionManager.clear(); // Clean up previous filter before applying another one.     
+            this.selectionIds.push(this.activeData.selectionId)
+            this.selectionIds = [this.selectionIds[this.selectionIds.length - 1]]
+            this.selectionManager.select(this.selectionIds, true)
         }
-        
     }
 
     private clickArrowLeftEvent() {
         this.rectForClickArrowLeft.on('click', d => {
             if (this.host.hostCapabilities.allowInteractions) {
                 this.shiftLeft = true
-                this.callFilterDataBeforeArrowClick = false
                 this.rectForClickArrowLeft.on('click', null)
                 this.animateOpacity(this.rectForClickArrowLeft.node())
             }
@@ -160,7 +174,6 @@ debugger
         this.containerArrowRight.on('click', d => {
             if (this.host.hostCapabilities.allowInteractions) {
                 this.shiftRight = true
-                this.callFilterDataBeforeArrowClick = false
                 this.containerArrowRight.on('click', null)
                 this.animateOpacity(this.rectForClickArrowRight.node())
             }
@@ -182,7 +195,7 @@ debugger
     private existActiveDataInDataModel() {
         //проверка нужна для того чтобы сразу переключить активный элемент при смене набора данных. Например при смене года на месяц
         const index = this.findIndexData(this.activeData)
-        
+
         return index != -1
     }
 
@@ -204,7 +217,7 @@ debugger
 
         if (!this.existActiveData()) {
             this.activeData = dataModel[0]
-        } else if (!this.existActiveDataInDataModel()) {            
+        } else if (!this.existActiveDataInDataModel()) {
             this.activeData = dataModel[0]
         }
         else {
