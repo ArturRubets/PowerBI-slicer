@@ -17,7 +17,7 @@ import * as d3 from "d3";
 import IVisualEventService = powerbi.extensibility.IVisualEventService;
 import ISelectionManager = powerbi.extensibility.ISelectionManager;
 import ISelectionId = powerbi.visuals.ISelectionId;
-import {BasicFilter, IFilterColumnTarget} from 'powerbi-models'
+import {BasicFilter, IFilterColumnTarget, IAdvancedFilterCondition, IAdvancedFilter, AdvancedFilter} from 'powerbi-models'
 
 const defaultSettings: Settings = {
     data: {
@@ -79,7 +79,7 @@ export class Visual implements IVisual {
             // console.log(ids);
             // this.options.jsonFilters
             // this.applyFilter()
-
+            console.log('registerOnSelectCallback');
         });
         this.svg = d3Select(options.element).append('svg')
         this.container = this.svg.append('g').attr('class', 'shadow')
@@ -136,17 +136,27 @@ export class Visual implements IVisual {
         // if (!this.isEventUpdate) {
         //     this.applyFilter()
         // }
-        debugger
+        
 
         let target: IFilterColumnTarget = {
             table: "Analyze ( Chart1)",
             column: "Qty"
         };
-        let values = [1, 2, 3, 23, 24];
-        let filter: BasicFilter = new BasicFilter(target, "In", values)
+        let values = +this.activeData.data
+
+        let filter: AdvancedFilter  = new AdvancedFilter(target, 'And',  {operator: 'GreaterThan', value: values})
+
+
+        if (!this.isEventUpdate) {
+            this.host.applyJsonFilter(filter, "general", "filter", powerbi.FilterAction.merge);
+        }
+        this.isEventUpdate = true
+        console.log('update');
         
-       this.host.applyJsonFilter(filter, "general", "filter", powerbi.FilterAction.merge);
- 
+      
+    //    if (this.isEventUpdate) {
+    //     this.host.applyJsonFilter(filter, "general", "filter", powerbi.FilterAction.remove);
+    //     }
 
     }
 
@@ -166,6 +176,7 @@ export class Visual implements IVisual {
                 this.shiftLeft = true
                 this.rectForClickArrowLeft.on('click', null)
                 this.animateOpacity(this.rectForClickArrowLeft.node())
+                this.isEventUpdate = true
             }
         })
     }
@@ -176,6 +187,7 @@ export class Visual implements IVisual {
                 this.shiftRight = true
                 this.containerArrowRight.on('click', null)
                 this.animateOpacity(this.rectForClickArrowRight.node())
+                this.isEventUpdate = true
             }
         })
     }
