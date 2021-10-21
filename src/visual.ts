@@ -17,7 +17,6 @@ import * as d3 from "d3";
 import IVisualEventService = powerbi.extensibility.IVisualEventService;
 import ISelectionId = powerbi.visuals.ISelectionId;
 import * as pbm from 'powerbi-models'
-
 // powerbi-visuals-utils-interactivityutils
 import { interactivityFilterService } from "powerbi-visuals-utils-interactivityutils";
 
@@ -70,8 +69,6 @@ export class Visual implements IVisual {
     private defaultValue: string = '(Empty)'
     private activeData: Data
 
-
-
     constructor(options: VisualConstructorOptions) {
         this.events = options.host.eventService;
         this.host = options.host;
@@ -95,31 +92,35 @@ export class Visual implements IVisual {
         this.events.renderingStarted(options);
         this.options = options
         const viewModel: ViewModel = visualTransform(options, this.host);
+    
         this.settings = viewModel.settings;
         this.dataModel = viewModel.dataModel;
+      
+        
         this.supportBookmarks()
 
-        this.setActiveData(this.dataModel)
-
+        
+        
         if (!this.isEventUpdate) {
-            this.applyFilter()
+            this.setEvents()
+            this.setActiveData(this.dataModel)
+            this.applyFilter()            
             this.isEventUpdate = true
         }
 
         this.render()
     }
 
+    //Поддержка закладок
     private supportBookmarks() {
         const jsonFilters: pbm.AdvancedFilter[] = this.options.jsonFilters as pbm.AdvancedFilter[];
         if (jsonFilters && jsonFilters[0] && this.activeData) {
-            // debugger
             const valueFromJsonFilter = jsonFilters[0]['values'][0]
-            console.log(valueFromJsonFilter);
+            //Текущий фильтр в отчете от этого визуального элемента не равен отображаемому значению в визуале
             if (this.activeData.data !== valueFromJsonFilter) {
-                //Поддержка закладок
-                //this.activeData.data = valueFromJsonFilter
-
-
+                this.activeData = this.findObjectByValue(valueFromJsonFilter)
+                this.setArrow()
+                this.render()
             }
         }
     }
@@ -148,8 +149,6 @@ export class Visual implements IVisual {
         const settings = { distanceUntilRect, marginUntilRect, actualWidth, height, widthRect, strokeWidth }
         this.drawArrowLeft(settings)
         this.drawArrowRight(settings)
-        this.clickArrowLeftEvent()
-        this.clickArrowRightEvent()
     }
 
     private clearFilter() {
@@ -201,8 +200,8 @@ export class Visual implements IVisual {
 
     private executeAfterAnimate() {
         this.isEventUpdate = false
-        //this.update(this.options)
         this.setActiveData(this.dataModel)
+        this.applyFilter()
         this.render()
         this.events.renderingFinished(this.options);
     }
@@ -270,14 +269,20 @@ export class Visual implements IVisual {
             }
         }
 
+        this.setArrow()
 
+
+        this.shiftRight = this.shiftLeft = false
+    }
+
+    private setArrow() {
         const dataIndexAfterChange = this.findIndexData(this.activeData)
 
         if (dataIndexAfterChange === 0) {
             this.disableArrow(this.containerArrowLeft)
             this.ableArrow(this.containerArrowRight)
         }
-        else if (dataIndexAfterChange === dataModel.length - 1) {
+        else if (dataIndexAfterChange === this.dataModel.length - 1) {
             this.disableArrow(this.containerArrowRight)
             this.ableArrow(this.containerArrowLeft)
         }
@@ -285,12 +290,14 @@ export class Visual implements IVisual {
             this.ableArrow(this.containerArrowRight)
             this.ableArrow(this.containerArrowLeft)
         }
-
-        this.shiftRight = this.shiftLeft = false
     }
 
     private findIndexData(data) {
         return this.dataModel.findIndex(d => d.selectionId.equals(data.selectionId) && d.data === data.data)
+    }
+
+    private findObjectByValue(value) {
+        return this.dataModel.filter(d => d.data === value)[0] //Находим первое значение из массива, поскольку из jsonFilter приходит только значение
     }
 
     private disableArrow(arrowContainer) {
@@ -387,6 +394,11 @@ export class Visual implements IVisual {
             .attr('width', nodeArrow.width)
             .attr('height', nodeArrow.height)
             .style('fill-opacity', 0)
+    }
+
+    private setEvents() {
+        this.clickArrowLeftEvent()
+        this.clickArrowRightEvent()
     }
 
     public enumerateObjectInstances(options: EnumerateVisualObjectInstancesOptions): powerbi.VisualObjectInstanceEnumeration {
