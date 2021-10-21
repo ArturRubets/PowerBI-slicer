@@ -15,9 +15,11 @@ import IVisualHost = powerbi.extensibility.visual.IVisualHost;
 type Selection<T1, T2 = T1> = d3.Selection<any, T1, any, T2>;
 import * as d3 from "d3";
 import IVisualEventService = powerbi.extensibility.IVisualEventService;
-import ISelectionManager = powerbi.extensibility.ISelectionManager;
 import ISelectionId = powerbi.visuals.ISelectionId;
-import {BasicFilter, IFilterColumnTarget, IAdvancedFilterCondition, IAdvancedFilter, AdvancedFilter} from 'powerbi-models'
+import * as pbm from 'powerbi-models'
+
+// powerbi-visuals-utils-interactivityutils
+import { interactivityFilterService } from "powerbi-visuals-utils-interactivityutils";
 
 const defaultSettings: Settings = {
     data: {
@@ -40,7 +42,6 @@ interface ViewModel {
 
 export class Visual implements IVisual {
     private events: IVisualEventService;
-    private selectionManager: ISelectionManager;
     private settings: Settings
     private svg: Selection<any>;
     private container: Selection<any>;
@@ -67,21 +68,15 @@ export class Visual implements IVisual {
     private duration: number = 400
     private isEventUpdate: boolean = false
     private defaultValue: string = '(Empty)'
-
-    private selectionIds: ISelectionId[] = [];
     private activeData: Data
+
+
 
     constructor(options: VisualConstructorOptions) {
         this.events = options.host.eventService;
         this.host = options.host;
-        this.selectionManager = options.host.createSelectionManager()
-        this.selectionManager.registerOnSelectCallback((ids: ISelectionId[]) => {
-            // console.log(ids);
-            // this.options.jsonFilters
-            // this.applyFilter()
-            console.log('registerOnSelectCallback');
-        });
-        this.svg = d3Select(options.element).append('svg')
+
+        this.svg = <any>d3Select(options.element).append('svg')
         this.container = this.svg.append('g').attr('class', 'shadow')
         this.rect = this.container.append('rect')
         this.text = this.container.append('text')
@@ -99,16 +94,39 @@ export class Visual implements IVisual {
     public update(options: VisualUpdateOptions) {
         this.events.renderingStarted(options);
         this.options = options
-        
-        let viewModel: ViewModel = visualTransform(options, this.host);
-
+        const viewModel: ViewModel = visualTransform(options, this.host);
         this.settings = viewModel.settings;
         this.dataModel = viewModel.dataModel;
+        this.supportBookmarks()
+
         this.setActiveData(this.dataModel)
 
+        if (!this.isEventUpdate) {
+            this.applyFilter()
+            this.isEventUpdate = true
+        }
 
-        this.width = options.viewport.width;
-        this.height = options.viewport.height;
+        this.render()
+    }
+
+    private supportBookmarks() {
+        const jsonFilters: pbm.AdvancedFilter[] = this.options.jsonFilters as pbm.AdvancedFilter[];
+        if (jsonFilters && jsonFilters[0] && this.activeData) {
+            // debugger
+            const valueFromJsonFilter = jsonFilters[0]['values'][0]
+            console.log(valueFromJsonFilter);
+            if (this.activeData.data !== valueFromJsonFilter) {
+                //Поддержка закладок
+                //this.activeData.data = valueFromJsonFilter
+
+
+            }
+        }
+    }
+
+    private render() {
+        this.width = this.options.viewport.width;
+        this.height = this.options.viewport.height;
         this.svg.attr("width", this.width).attr("height", this.height);
         this.marginVertical = Math.min(this.width, this.height) * 0.1
         this.marginHorizontal = Math.min(this.width, this.height) * 0.5
@@ -132,41 +150,32 @@ export class Visual implements IVisual {
         this.drawArrowRight(settings)
         this.clickArrowLeftEvent()
         this.clickArrowRightEvent()
+    }
 
-        // if (!this.isEventUpdate) {
-        //     this.applyFilter()
-        // }
-        
-
-        let target: IFilterColumnTarget = {
-            table: "Analyze ( Chart1)",
-            column: "Qty"
-        };
-        let values = +this.activeData.data
-
-        let filter: AdvancedFilter  = new AdvancedFilter(target, 'And',  {operator: 'GreaterThan', value: values})
-
-
-        if (!this.isEventUpdate) {
-            this.host.applyJsonFilter(filter, "general", "filter", powerbi.FilterAction.merge);
-        }
-        this.isEventUpdate = true
-        console.log('update');
-        
-      
-    //    if (this.isEventUpdate) {
-    //     this.host.applyJsonFilter(filter, "general", "filter", powerbi.FilterAction.remove);
-    //     }
-
+    private clearFilter() {
+        this.host.applyJsonFilter(null, "general", "filter", powerbi.FilterAction.merge);
     }
 
     private applyFilter() {
         if (this.host.hostCapabilities.allowInteractions) {
-            this.isEventUpdate = true; // This is checked in the update method. If true it won't re-render, this prevents and infinite loop
-            this.selectionManager.clear(); // Clean up previous filter before applying another one.     
-            this.selectionIds.push(this.activeData.selectionId)
-            this.selectionIds = [this.selectionIds[this.selectionIds.length - 1]]
-            this.selectionManager.select(this.selectionIds, true)
+            let value = this.activeData.data
+
+            const tableAndColumn = interactivityFilterService.extractFilterColumnTarget(<any>this.options.dataViews[0].metadata.columns[0]);
+
+            let target: pbm.IFilterTarget = {
+                table: tableAndColumn.table,
+                column: tableAndColumn.column
+            };
+
+            let advancedFilter: pbm.IAdvancedFilter = {
+                $schema: 'http://powerbi.com/product/schema#advanced',
+                target: target,
+                logicalOperator: 'And',
+                conditions: [{ operator: "Is", value: value }],
+                filterType: pbm.FilterType.Advanced,
+            }
+
+            this.host.applyJsonFilter(advancedFilter, "general", "filter", powerbi.FilterAction.merge);
         }
     }
 
@@ -176,7 +185,6 @@ export class Visual implements IVisual {
                 this.shiftLeft = true
                 this.rectForClickArrowLeft.on('click', null)
                 this.animateOpacity(this.rectForClickArrowLeft.node())
-                this.isEventUpdate = true
             }
         })
     }
@@ -187,9 +195,29 @@ export class Visual implements IVisual {
                 this.shiftRight = true
                 this.containerArrowRight.on('click', null)
                 this.animateOpacity(this.rectForClickArrowRight.node())
-                this.isEventUpdate = true
             }
         })
+    }
+
+    private executeAfterAnimate() {
+        this.isEventUpdate = false
+        //this.update(this.options)
+        this.setActiveData(this.dataModel)
+        this.render()
+        this.events.renderingFinished(this.options);
+    }
+
+    private animateOpacity(node) {
+        d3.select(node)
+            .style('fill', 'black')
+            .style('fill-opacity', 0.4)
+            .transition()
+            .duration(this.duration)
+            .style('fill-opacity', 0)
+            .end()
+            .then(() => {
+                this.executeAfterAnimate()
+            })
     }
 
     private checkOneObjectInDataModel(dataModel: Data[]) {
@@ -235,6 +263,7 @@ export class Visual implements IVisual {
         else {
             const dataIndex = this.findIndexData(this.activeData)
             if (this.shiftLeft) {
+                //Пользователь нажал на левую стрелку
                 this.activeData = dataModel[Math.max(dataIndex - 1, 0)]
             } else if (this.shiftRight) {
                 this.activeData = dataModel[Math.min(dataIndex + 1, dataModel.length - 1)]
@@ -358,25 +387,6 @@ export class Visual implements IVisual {
             .attr('width', nodeArrow.width)
             .attr('height', nodeArrow.height)
             .style('fill-opacity', 0)
-    }
-
-    private executeAfterAnimate() {
-        this.update(this.options)
-        this.applyFilter()
-        this.events.renderingFinished(this.options);
-    }
-
-    private animateOpacity(node) {
-        d3.select(node)
-            .style('fill', 'black')
-            .style('fill-opacity', 0.4)
-            .transition()
-            .duration(this.duration)
-            .style('fill-opacity', 0)
-            .end()
-            .then(() => {
-                this.executeAfterAnimate()
-            })
     }
 
     public enumerateObjectInstances(options: EnumerateVisualObjectInstancesOptions): powerbi.VisualObjectInstanceEnumeration {

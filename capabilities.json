@@ -62,13 +62,9 @@
             ]
         }
     ],
-    "drilldown": {
-        "roles": [
-            "category"
-        ]
-    },
     "sorting": {
         "default": {}
     },
-    "supportsMultiVisualSelection": true
+    "supportsMultiVisualSelection": true,
+    "supportsSynchronizingFilterState": true
 }
