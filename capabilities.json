@@ -26,7 +26,14 @@
                     "type": {
                         "numeric": true
                     }
+                },
+                "order": {
+                    "displayName": "Data display order",
+                    "type": {
+                        "bool": true
+                    }
                 }
+                
             }
         },
         "appearance":{

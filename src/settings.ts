@@ -10,7 +10,8 @@ export class VisualSettings extends DataViewObjectsParser {
 export class Settings {
   // Text Size
   public data: {
-    fontSize: number
+    fontSize: number,
+    order: boolean
   }
 
   public appearance:{

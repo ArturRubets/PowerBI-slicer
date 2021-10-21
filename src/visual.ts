@@ -22,7 +22,8 @@ import { interactivityFilterService } from "powerbi-visuals-utils-interactivityu
 
 const defaultSettings: Settings = {
     data: {
-        fontSize: null
+        fontSize: null,
+        order: true
     },
     appearance: {
         blackMode: false
@@ -68,6 +69,7 @@ export class Visual implements IVisual {
     private isEventUpdate: boolean = false
     private defaultValue: string = '(Empty)'
     private activeData: Data
+    private isRemoveDataUser: boolean = false
 
     constructor(options: VisualConstructorOptions) {
         this.events = options.host.eventService;
@@ -88,27 +90,45 @@ export class Visual implements IVisual {
         this.arrowRight = this.containerArrowRight.append('path').attr('stroke-linecap', 'round')
     }
 
-    public update(options: VisualUpdateOptions) {
+    private checkUserRemoveDataInVisual(options){
+        if(options.type === 36){
+            this.isEventUpdate = false
+            this.activeData = null
+            this.text.html('')
+            this.disableArrow(this.containerArrowLeft)
+            this.disableArrow(this.containerArrowRight)
+            this.clearFilter()
+            this.isRemoveDataUser = true            
+        } else if(options.type === 2){
+            this.isRemoveDataUser = false
+            this.ableArrow(this.containerArrowLeft)
+            this.ableArrow(this.containerArrowRight)
+        }
+        return this.isRemoveDataUser
+    }
+
+    public update(options: VisualUpdateOptions) {        
+        if(this.checkUserRemoveDataInVisual(options)){
+            return
+        }
         this.events.renderingStarted(options);
         this.options = options
         const viewModel: ViewModel = visualTransform(options, this.host);
-    
+
         this.settings = viewModel.settings;
         this.dataModel = viewModel.dataModel;
-      
-        
         this.supportBookmarks()
 
-        
-        
+
+        this.setActiveData(this.dataModel, this.settings.data.order)
+        this.render()
+
         if (!this.isEventUpdate) {
             this.setEvents()
-            this.setActiveData(this.dataModel)
-            this.applyFilter()            
+
+            this.applyFilter()
             this.isEventUpdate = true
         }
-
-        this.render()
     }
 
     //Поддержка закладок
@@ -200,7 +220,7 @@ export class Visual implements IVisual {
 
     private executeAfterAnimate() {
         this.isEventUpdate = false
-        this.setActiveData(this.dataModel)
+        this.setActiveData(this.dataModel, this.settings.data.order)
         this.applyFilter()
         this.render()
         this.events.renderingFinished(this.options);
@@ -231,14 +251,18 @@ export class Visual implements IVisual {
         return this.activeData && this.activeData.data != this.defaultValue
     }
 
-    private existActiveDataInDataModel() {
-        //проверка нужна для того чтобы сразу переключить активный элемент при смене набора данных. Например при смене года на месяц
-        const index = this.findIndexData(this.activeData)
+    // private existActiveDataInDataModel() {
+    //     //проверка нужна для того чтобы сразу переключить активный элемент при смене набора данных. Например при смене года на месяц
+    //     const index = this.findIndexData(this.activeData)
+    //     return index != -1
+    // }
 
-        return index != -1
+    private getInitialIndexData(dataModel: Data[], order:boolean){
+        return order? 0 : dataModel.length - 1
     }
 
-    private setActiveData(dataModel: Data[]) {
+    private setActiveData(dataModel: Data[], order: boolean) {        
+        const index = this.getInitialIndexData(dataModel, order)
 
         if (this.checkEmptyDataModel(dataModel)) {
             this.activeData = { data: this.defaultValue, selectionId: null }
@@ -248,17 +272,15 @@ export class Visual implements IVisual {
         }
 
         if (this.checkOneObjectInDataModel(dataModel)) {
-            this.activeData = dataModel[0]
+            this.activeData = dataModel[index]
             this.disableArrow(this.containerArrowLeft)
             this.disableArrow(this.containerArrowRight)
             return
         }
 
         if (!this.existActiveData()) {
-            this.activeData = dataModel[0]
-        } else if (!this.existActiveDataInDataModel()) {
-            this.activeData = dataModel[0]
-        }
+            this.activeData = dataModel[index]
+        } 
         else {
             const dataIndex = this.findIndexData(this.activeData)
             if (this.shiftLeft) {
@@ -416,6 +438,7 @@ export class Visual implements IVisual {
                     objectName: objectName,
                     properties: {
                         fontSize: this.settings.data.fontSize,
+                        order: this.settings.data.order
                     },
                     selector: null
                 });
@@ -460,6 +483,8 @@ function visualTransform(options: VisualUpdateOptions, host: IVisualHost): ViewM
         data: {
             fontSize: dataViewObjects.getValue(objects, { objectName: "data", propertyName: "fontSize" },
                 defaultSettings.data.fontSize),
+            order: dataViewObjects.getValue(objects, { objectName: "data", propertyName: "order" },
+                defaultSettings.data.order),
         },
         appearance: {
             blackMode: dataViewObjects.getValue(objects, { objectName: "appearance", propertyName: "blackMode" },
