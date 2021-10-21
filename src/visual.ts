@@ -63,6 +63,7 @@ export class Visual implements IVisual {
     private arrowRight: Selection<any>
     private rectForClickArrowLeft: Selection<any>
     private rectForClickArrowRight: Selection<any>
+    private containerRect: Selection<any>
     private containerArrowLeft: Selection<any>
     private containerArrowRight: Selection<any>
     private duration: number = 400
@@ -70,6 +71,14 @@ export class Visual implements IVisual {
     private defaultValue: string = '(Empty)'
     private activeData: Data
     private isRemoveDataUser: boolean = false
+    private dateModelOrderFlag: boolean
+    
+    private get colors(){
+        return {
+            black: '#333', 
+            white: '#fff'
+        }
+    }
 
     constructor(options: VisualConstructorOptions) {
         this.events = options.host.eventService;
@@ -77,29 +86,33 @@ export class Visual implements IVisual {
 
         this.svg = <any>d3Select(options.element).append('svg')
         this.container = this.svg.append('g').attr('class', 'shadow')
-        this.rect = this.container.append('rect')
-        this.text = this.container.append('text')
 
         this.containerArrowLeft = this.container.append('g')
         this.containerArrowRight = this.container.append('g')
+        this.containerRect = this.container.append('g')
+
+        this.rect = this.containerRect.append('rect')
+        this.text = this.containerRect.append('text')
 
         this.rectForClickArrowLeft = this.containerArrowLeft.append('rect')
         this.rectForClickArrowRight = this.containerArrowRight.append('rect')
 
         this.arrowLeft = this.containerArrowLeft.append('path').attr('stroke-linecap', 'round')
         this.arrowRight = this.containerArrowRight.append('path').attr('stroke-linecap', 'round')
+
+        this.dateModelOrderFlag = defaultSettings.data.order
     }
 
-    private checkUserRemoveDataInVisual(options){
-        if(options.type === 36){
+    private checkUserRemoveDataInVisual(options) {
+        if (options.type === 36) {
             this.isEventUpdate = false
             this.activeData = null
             this.text.html('')
             this.disableArrow(this.containerArrowLeft)
             this.disableArrow(this.containerArrowRight)
             this.clearFilter()
-            this.isRemoveDataUser = true            
-        } else if(options.type === 2){
+            this.isRemoveDataUser = true
+        } else if (options.type === 2) {
             this.isRemoveDataUser = false
             this.ableArrow(this.containerArrowLeft)
             this.ableArrow(this.containerArrowRight)
@@ -107,10 +120,11 @@ export class Visual implements IVisual {
         return this.isRemoveDataUser
     }
 
-    public update(options: VisualUpdateOptions) {        
-        if(this.checkUserRemoveDataInVisual(options)){
+    public update(options: VisualUpdateOptions) {
+        if (this.checkUserRemoveDataInVisual(options)) {
             return
         }
+
         this.events.renderingStarted(options);
         this.options = options
         const viewModel: ViewModel = visualTransform(options, this.host);
@@ -131,6 +145,8 @@ export class Visual implements IVisual {
         }
     }
 
+
+
     //Поддержка закладок
     private supportBookmarks() {
         const jsonFilters: pbm.AdvancedFilter[] = this.options.jsonFilters as pbm.AdvancedFilter[];
@@ -145,6 +161,7 @@ export class Visual implements IVisual {
         }
     }
 
+
     private render() {
         this.width = this.options.viewport.width;
         this.height = this.options.viewport.height;
@@ -155,9 +172,9 @@ export class Visual implements IVisual {
         this.heightRect = this.height - this.marginVertical * 2
 
         this.setShiftVisual()
-        const black = '#333', white = '#fff'
-        const fillText = this.settings.appearance.blackMode ? white : black
-        const fillButton = this.settings.appearance.blackMode ? black : white
+        
+        const fillText = this.settings.appearance.blackMode ? this.colors.white : this.colors.black
+        const fillButton = this.settings.appearance.blackMode ? this.colors.black : this.colors.white
 
         this.drawButton(fillButton)
         this.drawText(fillText)
@@ -169,6 +186,8 @@ export class Visual implements IVisual {
         const settings = { distanceUntilRect, marginUntilRect, actualWidth, height, widthRect, strokeWidth }
         this.drawArrowLeft(settings)
         this.drawArrowRight(settings)
+
+        this.setSettinsSmallScreen()
     }
 
     private clearFilter() {
@@ -218,6 +237,15 @@ export class Visual implements IVisual {
         })
     }
 
+    private clickButtonEvent() {
+        this.containerRect.on('click', d => {
+            if (this.host.hostCapabilities.allowInteractions) {
+                this.setActiveData(this.dataModel, this.settings.data.order)
+                this.render()
+            }
+        })
+    }
+
     private executeAfterAnimate() {
         this.isEventUpdate = false
         this.setActiveData(this.dataModel, this.settings.data.order)
@@ -257,13 +285,28 @@ export class Visual implements IVisual {
     //     return index != -1
     // }
 
-    private getInitialIndexData(dataModel: Data[], order:boolean){
-        return order? 0 : dataModel.length - 1
+    private getInitialIndexData(dataModel: Data[], order: boolean) {
+        return order ? 0 : dataModel.length - 1
     }
 
-    private setActiveData(dataModel: Data[], order: boolean) {        
+    private checkToggleOrderData(order: boolean) {
+        const result = this.dateModelOrderFlag !== order
+        if (result) {
+            this.dateModelOrderFlag = order
+        }
+        return result
+    }
+
+    private setActiveData(dataModel: Data[], order: boolean) {
         const index = this.getInitialIndexData(dataModel, order)
 
+        if (this.checkToggleOrderData(order)) {
+            this.activeData = dataModel[index]
+            this.setArrow()
+            return
+        }
+
+        debugger
         if (this.checkEmptyDataModel(dataModel)) {
             this.activeData = { data: this.defaultValue, selectionId: null }
             this.disableArrow(this.containerArrowLeft)
@@ -278,9 +321,11 @@ export class Visual implements IVisual {
             return
         }
 
+
+
         if (!this.existActiveData()) {
             this.activeData = dataModel[index]
-        } 
+        }
         else {
             const dataIndex = this.findIndexData(this.activeData)
             if (this.shiftLeft) {
@@ -292,8 +337,6 @@ export class Visual implements IVisual {
         }
 
         this.setArrow()
-
-
         this.shiftRight = this.shiftLeft = false
     }
 
@@ -334,21 +377,24 @@ export class Visual implements IVisual {
         this.container.attr("transform", "translate(" + this.marginHorizontal + "," + this.marginVertical + ")")
     }
 
-    private drawButton(fill) {
-        if (this.widthRect / this.heightRect > 0.2) {
-            this.rect
-                .attr('x', 0)
-                .attr('y', 0)
-                .attr('width', this.widthRect)
-                .attr('height', this.heightRect)
-                .attr('rx', this.widthRect * 0.09)
-                .style('fill', fill)
-        } else {
+    private setSettinsSmallScreen() {
+        if (this.widthRect / this.heightRect < 0.2) {
             this.rect
                 .attr('width', 0)
                 .attr('height', 0)
-        }
 
+            this.text.style('fill', this.colors.black)
+        }
+    }
+
+    private drawButton(fill) {
+        this.rect
+            .attr('x', 0)
+            .attr('y', 0)
+            .attr('width', this.widthRect)
+            .attr('height', this.heightRect)
+            .attr('rx', this.widthRect * 0.09)
+            .style('fill', fill)
     }
 
     private drawText(fill) {
@@ -421,6 +467,7 @@ export class Visual implements IVisual {
     private setEvents() {
         this.clickArrowLeftEvent()
         this.clickArrowRightEvent()
+        this.clickButtonEvent()
     }
 
     public enumerateObjectInstances(options: EnumerateVisualObjectInstancesOptions): powerbi.VisualObjectInstanceEnumeration {
