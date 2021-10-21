@@ -99,8 +99,6 @@ export class Visual implements IVisual {
 
         this.arrowLeft = this.containerArrowLeft.append('path').attr('stroke-linecap', 'round')
         this.arrowRight = this.containerArrowRight.append('path').attr('stroke-linecap', 'round')
-
-        this.dateModelOrderFlag = defaultSettings.data.order
     }
 
     private checkUserRemoveDataInVisual(options) {
@@ -121,11 +119,12 @@ export class Visual implements IVisual {
     }
 
     public update(options: VisualUpdateOptions) {
+        this.events.renderingStarted(options);
+
         if (this.checkUserRemoveDataInVisual(options)) {
             return
         }
-
-        this.events.renderingStarted(options);
+       
         this.options = options
         const viewModel: ViewModel = visualTransform(options, this.host);
 
@@ -138,14 +137,22 @@ export class Visual implements IVisual {
         this.render()
 
         if (!this.isEventUpdate) {
-            this.setEvents()
-
+            
             this.applyFilter()
             this.isEventUpdate = true
         }
+
+        if(this.checkToggleOrderData(this.settings.data.order)){
+            
+            this.applyFilter()
+            this.changeOrderData()
+        }
+        this.setEvents()
     }
 
-
+    private changeOrderData(){
+        this.dateModelOrderFlag = !this.dateModelOrderFlag
+    }
 
     //Поддержка закладок
     private supportBookmarks() {
@@ -291,9 +298,6 @@ export class Visual implements IVisual {
 
     private checkToggleOrderData(order: boolean) {
         const result = this.dateModelOrderFlag !== order
-        if (result) {
-            this.dateModelOrderFlag = order
-        }
         return result
     }
 
@@ -306,7 +310,6 @@ export class Visual implements IVisual {
             return
         }
 
-        debugger
         if (this.checkEmptyDataModel(dataModel)) {
             this.activeData = { data: this.defaultValue, selectionId: null }
             this.disableArrow(this.containerArrowLeft)
