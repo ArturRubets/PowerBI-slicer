@@ -17,13 +17,12 @@ import * as d3 from "d3";
 import IVisualEventService = powerbi.extensibility.IVisualEventService;
 import ISelectionId = powerbi.visuals.ISelectionId;
 import * as pbm from 'powerbi-models'
-// powerbi-visuals-utils-interactivityutils
 import { interactivityFilterService } from "powerbi-visuals-utils-interactivityutils";
 
 const defaultSettings: Settings = {
     data: {
         fontSize: null,
-        order: true
+        mode: true
     },
     appearance: {
         blackMode: false
@@ -70,12 +69,12 @@ export class Visual implements IVisual {
     private isEventUpdate: boolean = false
     private defaultValue: string = '(Empty)'
     private activeData: Data
-    private isRemoveDataUser: boolean = false
     private dateModelOrderFlag: boolean
-    
-    private get colors(){
+    private dataModelPrev: Data[] = []
+
+    private get colors() {
         return {
-            black: '#333', 
+            black: '#333',
             white: '#fff'
         }
     }
@@ -101,57 +100,39 @@ export class Visual implements IVisual {
         this.arrowRight = this.containerArrowRight.append('path').attr('stroke-linecap', 'round')
     }
 
-    private checkUserRemoveDataInVisual(options) {
-        if (options.type === 36) {
-            this.isEventUpdate = false
-            this.activeData = null
-            this.text.html('')
-            this.disableArrow(this.containerArrowLeft)
-            this.disableArrow(this.containerArrowRight)
-            this.clearFilter()
-            this.isRemoveDataUser = true
-        } else if (options.type === 2) {
-            this.isRemoveDataUser = false
-            this.ableArrow(this.containerArrowLeft)
-            this.ableArrow(this.containerArrowRight)
-        }
-        return this.isRemoveDataUser
-    }
 
     public update(options: VisualUpdateOptions) {
         this.events.renderingStarted(options);
-
-        if (this.checkUserRemoveDataInVisual(options)) {
-            return
-        }
-       
         this.options = options
-        const viewModel: ViewModel = visualTransform(options, this.host);
-
-        this.settings = viewModel.settings;
-        this.dataModel = viewModel.dataModel;
+        const viewModel: ViewModel = visualTransform(options, this.host)
+        this.settings = viewModel.settings
+        this.dataModel = viewModel.dataModel
+debugger
         this.supportBookmarks()
 
-
-        this.setActiveData(this.dataModel, this.settings.data.order)
-        this.render()
-
         if (!this.isEventUpdate) {
-            
-            this.applyFilter()
-            this.isEventUpdate = true
+            this.dateModelOrderFlag = this.settings.data.mode
         }
 
-        if(this.checkToggleOrderData(this.settings.data.order)){
-            
+        if (this.changeDataModel()) {
+            this.setDataWhenChangeModel(this.dataModel, this.settings.data.mode)
             this.applyFilter()
-            this.changeOrderData()
         }
+
+        if (this.checkToggleOrderData(this.settings.data.mode)) {
+            this.setDataWhenToggleOrderData(this.dataModel, this.settings.data.mode)
+            this.changeOrderData(this.settings.data.mode)
+            this.applyFilter()
+        }
+
+        
+
+        this.setArrow(this.dataModel.length)
+        this.render()
         this.setEvents()
-    }
 
-    private changeOrderData(){
-        this.dateModelOrderFlag = !this.dateModelOrderFlag
+        this.isEventUpdate = true
+        this.dataModelPrev = this.dataModel
     }
 
     //Поддержка закладок
@@ -162,12 +143,11 @@ export class Visual implements IVisual {
             //Текущий фильтр в отчете от этого визуального элемента не равен отображаемому значению в визуале
             if (this.activeData.data !== valueFromJsonFilter) {
                 this.activeData = this.findObjectByValue(valueFromJsonFilter)
-                this.setArrow()
+                this.setArrow(this.dataModel.length)
                 this.render()
             }
         }
     }
-
 
     private render() {
         this.width = this.options.viewport.width;
@@ -179,7 +159,7 @@ export class Visual implements IVisual {
         this.heightRect = this.height - this.marginVertical * 2
 
         this.setShiftVisual()
-        
+
         const fillText = this.settings.appearance.blackMode ? this.colors.white : this.colors.black
         const fillButton = this.settings.appearance.blackMode ? this.colors.black : this.colors.white
 
@@ -244,18 +224,9 @@ export class Visual implements IVisual {
         })
     }
 
-    private clickButtonEvent() {
-        this.containerRect.on('click', d => {
-            if (this.host.hostCapabilities.allowInteractions) {
-                this.setActiveData(this.dataModel, this.settings.data.order)
-                this.render()
-            }
-        })
-    }
-
     private executeAfterAnimate() {
-        this.isEventUpdate = false
-        this.setActiveData(this.dataModel, this.settings.data.order)
+        this.setDataWhenShiftArray(this.dataModel, this.shiftLeft, this.shiftRight)
+        this.shiftRight = this.shiftLeft = false
         this.applyFilter()
         this.render()
         this.events.renderingFinished(this.options);
@@ -274,26 +245,37 @@ export class Visual implements IVisual {
             })
     }
 
-    private checkOneObjectInDataModel(dataModel: Data[]) {
-        return dataModel.length === 1
-    }
-
-    private checkEmptyDataModel(dataModel: Data[]) {
-        return dataModel.length === 0
-    }
-
-    private existActiveData() {
-        return this.activeData && this.activeData.data != this.defaultValue
-    }
-
-    // private existActiveDataInDataModel() {
-    //     //проверка нужна для того чтобы сразу переключить активный элемент при смене набора данных. Например при смене года на месяц
-    //     const index = this.findIndexData(this.activeData)
-    //     return index != -1
-    // }
-
     private getInitialIndexData(dataModel: Data[], order: boolean) {
         return order ? 0 : dataModel.length - 1
+    }
+
+    private setDataWhenShiftArray(dataModel: Data[], shiftLeft, shiftRight) {
+        if (shiftLeft) {
+            //Пользователь нажал на левую стрелку
+            const dataIndex = this.findIndexData(this.activeData)
+            this.activeData = dataModel[Math.max(dataIndex - 1, 0)]
+        } else if (shiftRight) {
+            const dataIndex = this.findIndexData(this.activeData)
+            this.activeData = dataModel[Math.min(dataIndex + 1, dataModel.length - 1)]
+        }
+    }
+
+    private setDataWhenChangeModel(dataModel: Data[], order) {
+        const index = this.getInitialIndexData(dataModel, order)
+        this.activeData = dataModel[index]
+    }
+
+    private setDataWhenToggleOrderData(dataModel: Data[], order) {
+        const index = this.getInitialIndexData(dataModel, order)
+        this.activeData = dataModel[index]
+    }
+
+    private changeDataModel() {
+        return this.dataModel.length != this.dataModelPrev.length
+    }
+
+    private changeOrderData(order) {
+        this.dateModelOrderFlag = order
     }
 
     private checkToggleOrderData(order: boolean) {
@@ -301,56 +283,18 @@ export class Visual implements IVisual {
         return result
     }
 
-    private setActiveData(dataModel: Data[], order: boolean) {
-        const index = this.getInitialIndexData(dataModel, order)
+    private setArrow(dataModelLength: number) {
+        const dataIndex = this.findIndexData(this.activeData)
 
-        if (this.checkToggleOrderData(order)) {
-            this.activeData = dataModel[index]
-            this.setArrow()
-            return
-        }
-
-        if (this.checkEmptyDataModel(dataModel)) {
-            this.activeData = { data: this.defaultValue, selectionId: null }
+        if (dataIndex === 0) {
             this.disableArrow(this.containerArrowLeft)
-            this.disableArrow(this.containerArrowRight)
-            return
-        }
-
-        if (this.checkOneObjectInDataModel(dataModel)) {
-            this.activeData = dataModel[index]
-            this.disableArrow(this.containerArrowLeft)
-            this.disableArrow(this.containerArrowRight)
-            return
-        }
-
-
-
-        if (!this.existActiveData()) {
-            this.activeData = dataModel[index]
-        }
-        else {
-            const dataIndex = this.findIndexData(this.activeData)
-            if (this.shiftLeft) {
-                //Пользователь нажал на левую стрелку
-                this.activeData = dataModel[Math.max(dataIndex - 1, 0)]
-            } else if (this.shiftRight) {
-                this.activeData = dataModel[Math.min(dataIndex + 1, dataModel.length - 1)]
+            if (dataModelLength === 1) {
+                this.disableArrow(this.containerArrowRight)
+            } else {
+                this.ableArrow(this.containerArrowRight)
             }
         }
-
-        this.setArrow()
-        this.shiftRight = this.shiftLeft = false
-    }
-
-    private setArrow() {
-        const dataIndexAfterChange = this.findIndexData(this.activeData)
-
-        if (dataIndexAfterChange === 0) {
-            this.disableArrow(this.containerArrowLeft)
-            this.ableArrow(this.containerArrowRight)
-        }
-        else if (dataIndexAfterChange === this.dataModel.length - 1) {
+        else if (dataIndex === this.dataModel.length - 1) {
             this.disableArrow(this.containerArrowRight)
             this.ableArrow(this.containerArrowLeft)
         }
@@ -470,7 +414,6 @@ export class Visual implements IVisual {
     private setEvents() {
         this.clickArrowLeftEvent()
         this.clickArrowRightEvent()
-        this.clickButtonEvent()
     }
 
     public enumerateObjectInstances(options: EnumerateVisualObjectInstancesOptions): powerbi.VisualObjectInstanceEnumeration {
@@ -488,7 +431,7 @@ export class Visual implements IVisual {
                     objectName: objectName,
                     properties: {
                         fontSize: this.settings.data.fontSize,
-                        order: this.settings.data.order
+                        mode: this.settings.data.mode
                     },
                     selector: null
                 });
@@ -533,15 +476,14 @@ function visualTransform(options: VisualUpdateOptions, host: IVisualHost): ViewM
         data: {
             fontSize: dataViewObjects.getValue(objects, { objectName: "data", propertyName: "fontSize" },
                 defaultSettings.data.fontSize),
-            order: dataViewObjects.getValue(objects, { objectName: "data", propertyName: "order" },
-                defaultSettings.data.order),
+            mode: dataViewObjects.getValue(objects, { objectName: "data", propertyName: "mode" },
+                defaultSettings.data.mode),
         },
         appearance: {
             blackMode: dataViewObjects.getValue(objects, { objectName: "appearance", propertyName: "blackMode" },
                 defaultSettings.appearance.blackMode),
         }
     };
-
 
     let data: Data[] = []
     categories.values.forEach((d, i) => data.push({

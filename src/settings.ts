@@ -11,7 +11,7 @@ export class Settings {
   // Text Size
   public data: {
     fontSize: number,
-    order: boolean
+    mode: boolean
   }
 
   public appearance:{

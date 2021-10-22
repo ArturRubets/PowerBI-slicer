@@ -27,8 +27,8 @@
                         "numeric": true
                     }
                 },
-                "order": {
-                    "displayName": "Data display order",
+                "mode": {
+                    "displayName": "Mode",
                     "type": {
                         "bool": true
                     }
