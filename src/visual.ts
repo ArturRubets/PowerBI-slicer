@@ -70,6 +70,7 @@ export class Visual implements IVisual {
     private activeData: Data
     private dateModelOrderFlag: boolean
     private dataModelPrev: Data[] = []
+    private defaultValue = '(Empty)'
 
     private get colors() {
         return {
@@ -101,10 +102,9 @@ export class Visual implements IVisual {
 
 
     public update(options: VisualUpdateOptions) {
-        //debugger
         this.events.renderingStarted(options);
         this.options = options
-        const viewModel: ViewModel = visualTransform(options, this.host)
+        const viewModel: ViewModel = visualTransform(options, this.host, this.defaultValue)
         this.settings = viewModel.settings
         this.dataModel = viewModel.dataModel
         if (!this.settings || !this.dataModel) {
@@ -479,7 +479,7 @@ export class Visual implements IVisual {
 
 }
 
-function visualTransform(options: VisualUpdateOptions, host: IVisualHost): ViewModel {
+function visualTransform(options: VisualUpdateOptions, host: IVisualHost, defaultValue): ViewModel {
     let dataViews = options.dataViews;
     let viewModel: ViewModel = {
         dataModel: null,
@@ -517,7 +517,7 @@ function visualTransform(options: VisualUpdateOptions, host: IVisualHost): ViewM
 
     let data: Data[] = []
     categories.values.forEach((d, i) => data.push({
-        data: d,
+        data: d || defaultValue,
         selectionId: host.createSelectionIdBuilder()
             .withCategory(categories, i)
             .createSelectionId()
