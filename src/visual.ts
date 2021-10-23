@@ -66,8 +66,6 @@ export class Visual implements IVisual {
     private containerArrowLeft: Selection<any>
     private containerArrowRight: Selection<any>
     private duration: number = 400
-    private isEventUpdate: boolean = false
-    private defaultValue: string = '(Empty)'
     private activeData: Data
     private dateModelOrderFlag: boolean
     private dataModelPrev: Data[] = []
@@ -102,16 +100,14 @@ export class Visual implements IVisual {
 
 
     public update(options: VisualUpdateOptions) {
+        //debugger
         this.events.renderingStarted(options);
         this.options = options
         const viewModel: ViewModel = visualTransform(options, this.host)
         this.settings = viewModel.settings
         this.dataModel = viewModel.dataModel
-debugger
-        this.supportBookmarks()
-
-        if (!this.isEventUpdate) {
-            this.dateModelOrderFlag = this.settings.data.mode
+        if(!this.settings || !this.dataModel){
+            return
         }
 
         if (this.changeDataModel()) {
@@ -124,29 +120,36 @@ debugger
             this.changeOrderData(this.settings.data.mode)
             this.applyFilter()
         }
+        this.supportBookmarksAndFiltersOnReport()
 
-        
+        if(!this.activeData){
+            //Если из всех условий активного элемента нет то установить слайсер в позицию по сортировке
+            this.setDataWhenChangeModel(this.dataModel, this.settings.data.mode)
+            this.applyFilter()
+        }
 
         this.setArrow(this.dataModel.length)
         this.render()
         this.setEvents()
 
-        this.isEventUpdate = true
         this.dataModelPrev = this.dataModel
     }
 
     //Поддержка закладок
-    private supportBookmarks() {
-        const jsonFilters: pbm.AdvancedFilter[] = this.options.jsonFilters as pbm.AdvancedFilter[];
-        if (jsonFilters && jsonFilters[0] && this.activeData) {
-            const valueFromJsonFilter = jsonFilters[0]['values'][0]
-            //Текущий фильтр в отчете от этого визуального элемента не равен отображаемому значению в визуале
-            if (this.activeData.data !== valueFromJsonFilter) {
-                this.activeData = this.findObjectByValue(valueFromJsonFilter)
-                this.setArrow(this.dataModel.length)
-                this.render()
-            }
+    private supportBookmarksAndFiltersOnReport() {
+        const isFilterInReport = this.isFilterInReport()
+        if (isFilterInReport ) {
+            const valueFromJsonFilter = this.options.jsonFilters[0]['values'][0]
+            this.activeData = this.findObjectByValue(valueFromJsonFilter)
         }
+    }
+
+    private isFilterInReport() {
+        const jsonFilters: pbm.AdvancedFilter[] = this.options.jsonFilters as pbm.AdvancedFilter[];
+        if (jsonFilters && jsonFilters[0]) {
+            return true
+        }
+        return false
     }
 
     private render() {
@@ -271,7 +274,11 @@ debugger
     }
 
     private changeDataModel() {
-        return this.dataModel.length != this.dataModelPrev.length
+        if(this.dataModelPrev.length === 0){
+            return false //Если нет данных о прошлом столбце значит изменений в модели не было и это первая загрузка
+        }
+        const found = this.dataModel.some(d1 =>  this.dataModelPrev.map(d2 => d2.data).includes(d1.data))
+        return !found
     }
 
     private changeOrderData(order) {
@@ -279,8 +286,11 @@ debugger
     }
 
     private checkToggleOrderData(order: boolean) {
-        const result = this.dateModelOrderFlag !== order
-        return result
+        if(this.dateModelOrderFlag == null){
+            this.dateModelOrderFlag = order
+            return false    //Если нет данных  значит это первая загрузка
+        }
+        return this.dateModelOrderFlag !== order
     }
 
     private setArrow(dataModelLength: number) {
