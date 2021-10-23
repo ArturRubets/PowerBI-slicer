@@ -28,7 +28,13 @@
                     }
                 },
                 "mode": {
-                    "displayName": "Mode",
+                    "displayName": "Change sorting",
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "dblClick": {
+                    "displayName": "Double click on the button to reset data",
                     "type": {
                         "bool": true
                     }

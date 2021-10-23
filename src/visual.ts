@@ -22,7 +22,8 @@ import { interactivityFilterService } from "powerbi-visuals-utils-interactivityu
 const defaultSettings: Settings = {
     data: {
         fontSize: null,
-        mode: true
+        mode: true,
+        dblClick: false
     },
     appearance: {
         blackMode: false
@@ -106,12 +107,12 @@ export class Visual implements IVisual {
         const viewModel: ViewModel = visualTransform(options, this.host)
         this.settings = viewModel.settings
         this.dataModel = viewModel.dataModel
-        if(!this.settings || !this.dataModel){
+        if (!this.settings || !this.dataModel) {
             return
         }
 
         if (this.changeDataModel()) {
-            this.setDataWhenChangeModel(this.dataModel, this.settings.data.mode)
+            this.setDataInitial(this.dataModel, this.settings.data.mode)
             this.applyFilter()
         }
 
@@ -122,9 +123,9 @@ export class Visual implements IVisual {
         }
         this.supportBookmarksAndFiltersOnReport()
 
-        if(!this.activeData){
+        if (!this.activeData) {
             //Если из всех условий активного элемента нет то установить слайсер в позицию по сортировке
-            this.setDataWhenChangeModel(this.dataModel, this.settings.data.mode)
+            this.setDataInitial(this.dataModel, this.settings.data.mode)
             this.applyFilter()
         }
 
@@ -138,7 +139,7 @@ export class Visual implements IVisual {
     //Поддержка закладок
     private supportBookmarksAndFiltersOnReport() {
         const isFilterInReport = this.isFilterInReport()
-        if (isFilterInReport ) {
+        if (isFilterInReport) {
             const valueFromJsonFilter = this.options.jsonFilters[0]['values'][0]
             this.activeData = this.findObjectByValue(valueFromJsonFilter)
         }
@@ -227,6 +228,17 @@ export class Visual implements IVisual {
         })
     }
 
+    private doubleClickButtonEvent() {
+        this.containerRect.on('dblclick', d => {
+            if (this.host.hostCapabilities.allowInteractions) {
+                this.setDataInitial(this.dataModel, this.settings.data.mode)
+                this.applyFilter()
+                this.setArrow(this.dataModel.length)
+                this.render()
+            }
+        })
+    }
+
     private executeAfterAnimate() {
         this.setDataWhenShiftArray(this.dataModel, this.shiftLeft, this.shiftRight)
         this.shiftRight = this.shiftLeft = false
@@ -263,7 +275,7 @@ export class Visual implements IVisual {
         }
     }
 
-    private setDataWhenChangeModel(dataModel: Data[], order) {
+    private setDataInitial(dataModel: Data[], order) {
         const index = this.getInitialIndexData(dataModel, order)
         this.activeData = dataModel[index]
     }
@@ -274,10 +286,10 @@ export class Visual implements IVisual {
     }
 
     private changeDataModel() {
-        if(this.dataModelPrev.length === 0){
+        if (this.dataModelPrev.length === 0) {
             return false //Если нет данных о прошлом столбце значит изменений в модели не было и это первая загрузка
         }
-        const found = this.dataModel.some(d1 =>  this.dataModelPrev.map(d2 => d2.data).includes(d1.data))
+        const found = this.dataModel.some(d1 => this.dataModelPrev.map(d2 => d2.data).includes(d1.data))
         return !found
     }
 
@@ -286,7 +298,7 @@ export class Visual implements IVisual {
     }
 
     private checkToggleOrderData(order: boolean) {
-        if(this.dateModelOrderFlag == null){
+        if (this.dateModelOrderFlag == null) {
             this.dateModelOrderFlag = order
             return false    //Если нет данных  значит это первая загрузка
         }
@@ -424,6 +436,11 @@ export class Visual implements IVisual {
     private setEvents() {
         this.clickArrowLeftEvent()
         this.clickArrowRightEvent()
+        if(this.settings.data.dblClick){
+            this.doubleClickButtonEvent()
+        } else {
+            this.containerRect.on('dblclick', null)
+        }
     }
 
     public enumerateObjectInstances(options: EnumerateVisualObjectInstancesOptions): powerbi.VisualObjectInstanceEnumeration {
@@ -441,7 +458,8 @@ export class Visual implements IVisual {
                     objectName: objectName,
                     properties: {
                         fontSize: this.settings.data.fontSize,
-                        mode: this.settings.data.mode
+                        mode: this.settings.data.mode,
+                        dblClick: this.settings.data.dblClick,
                     },
                     selector: null
                 });
@@ -488,6 +506,8 @@ function visualTransform(options: VisualUpdateOptions, host: IVisualHost): ViewM
                 defaultSettings.data.fontSize),
             mode: dataViewObjects.getValue(objects, { objectName: "data", propertyName: "mode" },
                 defaultSettings.data.mode),
+            dblClick: dataViewObjects.getValue(objects, { objectName: "data", propertyName: "dblClick" },
+                defaultSettings.data.dblClick),
         },
         appearance: {
             blackMode: dataViewObjects.getValue(objects, { objectName: "appearance", propertyName: "blackMode" },

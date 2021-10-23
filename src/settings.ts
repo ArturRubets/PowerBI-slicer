@@ -11,7 +11,8 @@ export class Settings {
   // Text Size
   public data: {
     fontSize: number,
-    mode: boolean
+    mode: boolean,
+    dblClick: boolean
   }
 
   public appearance:{
